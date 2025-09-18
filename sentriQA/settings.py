@@ -27,14 +27,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = True if os.environ.get("DEBUG") == "1" else False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [os.environ.get("ALLOWED_HOSTS"), '127.0.0.1']
 
-CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
-CORS_ORIGIN_ALLOW_ALL= True
-CORS_ALLOW_CREDENTIALS =  True
-
+CORS_ALLOWED_ORIGINS = [os.environ.get("CORS_ALLOWED_ORIGINS")]
+CORS_TRUSTED_ORIGINS = [os.environ.get("CORS_ALLOWED_ORIGINS")]
 # Application definition
 
 INSTALLED_APPS = [
@@ -101,7 +99,6 @@ DATABASES = {
     }
 }
 
-
 # DATABASES = {
 #     "default": {
 #         "ENGINE": "django.db.backends.postgresql",
@@ -115,7 +112,6 @@ DATABASES = {
 #         "PORT": 5432,
 #     }
 # }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -163,7 +159,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "assets/"
+STATIC_URL = "/assets/"
 MEDIA_URL = '/images/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'frontend/dist/assets'),

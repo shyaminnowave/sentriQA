@@ -80,7 +80,7 @@ def execute_sql_query(sql_query)->list:
 
 def get_id_module_mapping():
     try:
-        module_response = requests.get("http://localhost:8000/api/module/")
+        module_response = requests.get("https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/module/")
         module_response.raise_for_status()  # Raise if not 2xx
         return module_response.json()
     except requests.HTTPError as e:
@@ -155,7 +155,7 @@ def generate_testplan(name:str, description:str, output_counts:int, module_names
 
     if tsp_params["output_counts"] and tsp_params["module_names"] and tsp_params["priority"]:
 
-        url = "http://localhost:8000/api/test-plan"
+        url = "https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/test-plan"
         payload = {
             "name": tsp_params['name'] or "Test Plan for Modules",
             "description": tsp_params['description'] or "This test plan focuses on ensuring the functionalities and integration tests",
