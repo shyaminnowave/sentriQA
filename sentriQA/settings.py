@@ -76,7 +76,7 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
-            BASE_DIR / "frontend/build"
+            BASE_DIR / "frontend/dist"
         ],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -166,7 +166,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 MEDIA_URL = '/images/'
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'frontend/build/static'),
+    os.path.join(BASE_DIR, 'frontend/dist/assets'),
 ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STORAGES = {
