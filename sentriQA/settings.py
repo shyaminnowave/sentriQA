@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'django_extensions',
     'import_export',
     'drf_spectacular',
+    'solo',
 
     # local apps
     'apps.core',
@@ -94,24 +95,30 @@ WSGI_APPLICATION = "sentriQA.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("PGSQL_DATABASE_NAME"),
+        "USER": os.environ.get("PGSQL_DATABASE_USER"),
+        "PASSWORD": os.environ.get("PGSQL_DATABASE_PASS"),
+        "HOST": os.environ.get("PGSQL_DATABASE_HOST"),
+        "PORT": 5432,
+        "OPTIONS": {
+            "options": "-c search_path=public"
+        },
+    },
+    "core": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("PGSQL_DATABASE_NAME"),
+        "USER": os.environ.get("PGSQL_DATABASE_USER"),
+        "PASSWORD": os.environ.get("PGSQL_DATABASE_PASS"),
+        "HOST": os.environ.get("PGSQL_DATABASE_HOST"),
+        "PORT": 5432,
+        "OPTIONS": {
+            "options": "-c search_path=core,public"
+        },
     }
 }
 
-# DATABASES = {
-#     "default": {
-#         "ENGINE": "django.db.backends.postgresql",
-#         "NAME": "postgres",
-#         "USER": "sentriqa_admin",
-#         "PASSWORD": "Inw1908SQA",
-#         "HOST": "sentriqa-server.postgres.database.azure.com",
-#         "OPTIONS": {
-#             "options": "-c search_path=auth,public"
-#         },
-#         "PORT": 5432,
-#     }
-# }
+DATABASE_ROUTERS = ['sentriQA.routers.DatabaseRouter']
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

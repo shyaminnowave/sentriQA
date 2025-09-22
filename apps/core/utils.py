@@ -149,6 +149,6 @@ class TestcaseImportExcel(ExcelFileFactory):
                 TestCaseMetric.objects.bulk_create(matrix)
             return True
         except Exception as e:
-            print(e)
+            print('error', e)
             return False
 

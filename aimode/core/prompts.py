@@ -9,7 +9,7 @@ def get_sql_table_names(conn):
     query = """
         SELECT tablename
         FROM pg_catalog.pg_tables
-        WHERE schemaname='public';
+        WHERE schemaname='core';
     """
     try:
         with conn.cursor() as cur:
@@ -33,7 +33,7 @@ def get_all_table_columns(conn) -> Dict[str, List[str]]:
               ON t.table_name = c.table_name
              AND t.table_schema = c.table_schema
         WHERE
-            t.table_schema = 'public'
+            t.table_schema = 'core'
             AND t.table_type   = 'BASE TABLE'
         GROUP BY
             c.table_name;
@@ -94,8 +94,8 @@ table_columns = ", ".join(
 
 table_names = ", ".join(name[0] for name in get_sql_table_names(conn))
 
-module_names = db.execute("SELECT DISTINCT cm.name FROM core_module AS cm")
-module_priorities = db.execute("SELECT DISTINCT ct.priority FROM core_testcasemodel AS ct")
+module_names = db.execute("SELECT DISTINCT cm.name FROM core.core_module AS cm")
+module_priorities = db.execute("SELECT DISTINCT ct.priority FROM core.core_testcasemodel AS ct")
 
 AGENT_PROMPT_TEXT = f"""
 You are a helpful assistant with access to three tools: `sql_query_generator`, `execute_sql_query` and `generate_testplan`.

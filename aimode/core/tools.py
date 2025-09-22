@@ -1,3 +1,4 @@
+import os
 from langchain_core.tools import tool
 from aimode.core.database import conn
 from loguru import logger
@@ -7,8 +8,9 @@ import requests
 import json
 from aimode.core.prompts import build_sql_generation_prompt, get_sql_table_names
 from aimode.core.llms import llm
+from dotenv import load_dotenv
 
-
+load_dotenv()
 
 class SQLQueryGeneratorInput(BaseModel):
     user_query: str
@@ -80,7 +82,8 @@ def execute_sql_query(sql_query)->list:
 
 def get_id_module_mapping():
     try:
-        module_response = requests.get("https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/module/")
+        url = os.getenv("SITE_URL")
+        module_response = requests.get(f"{url}/api/module/")
         module_response.raise_for_status()  # Raise if not 2xx
         return module_response.json()
     except requests.HTTPError as e:
@@ -150,12 +153,14 @@ def generate_testplan(name:str, description:str, output_counts:int, module_names
     tsp_params['module_names'] = module_names
     tsp_params['priority'] = priority
 
+    site_url = os.getenv("SITE_URL")
+
 
     tsp_params["module_ids"] = get_ids_by_module_names(tsp_params['module_names'] or [])
 
     if tsp_params["output_counts"] and tsp_params["module_names"] and tsp_params["priority"]:
 
-        url = "https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/test-plan"
+        url = f"{site_url}/api/test-plan"
         payload = {
             "name": tsp_params['name'] or "Test Plan for Modules",
             "description": tsp_params['description'] or "This test plan focuses on ensuring the functionalities and integration tests",

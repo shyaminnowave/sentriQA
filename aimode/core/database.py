@@ -75,4 +75,4 @@ class SQLDatabaseConnection:
 
 # Single global instance
 db = SQLDatabaseConnection()
-conn = db.connect_postgresql(user="llm_user")
+conn = db.connect_postgresql()

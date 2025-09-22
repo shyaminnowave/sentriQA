@@ -4,6 +4,7 @@ from django_extensions.db.models import TimeStampedModel
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator, MaxValueValidator
 from decimal import Decimal
+from solo.models import SingletonModel
 from autoslug import AutoSlugField
 
 # Create your models here.
@@ -28,12 +29,10 @@ class Module(TimeStampedModel):
     def __str__(self):
         return self.name
 
-    class Meta:
-        db_table = 'core_module'
 
 class TestCaseModel(TimeStampedModel):
 
-    name = models.CharField(unique=True, max_length=100)
+    name = models.CharField(unique=True, max_length=255)
     priority = models.CharField(choices=PriorityChoice.choices, default=PriorityChoice.CLASS_ONE, max_length=20)
     module = models.ForeignKey(Module, on_delete=models.SET_NULL, null=True, blank=True, related_name='test_cases')
     testcase_type = models.CharField(max_length=20, default='functionality', blank=True, null=True)
@@ -42,8 +41,6 @@ class TestCaseModel(TimeStampedModel):
     def __str__(self):
         return self.name
 
-    class Meta:
-        db_table = 'core_testcasemodel'
 
 class TestCaseMetric(TimeStampedModel):
 
@@ -135,12 +132,12 @@ class TestPlan(TimeStampedModel):
         verbose_name_plural = _('Test Plans')
 
 
-class Rpn(TimeStampedModel):
+class RPNValue(SingletonModel, TimeStampedModel):
 
-    value = models.DecimalField(default=0, blank=True, null=True, decimal_places=4, max_digits=4)
+    max_value = models.DecimalField(default=0, blank=True, null=True, decimal_places=4, max_digits=4)
 
     def __str__(self):
-        return self.value
+        return self.max_value
 
 
 class TestScore(TimeStampedModel):
