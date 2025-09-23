@@ -76,7 +76,6 @@ class TestPlanningView(generics.GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         serializer = TestPlanSerializer(data=request.data)
-        print(serializer.is_valid())
         if serializer.is_valid():
             queryset = TestCaseMetric.objects.filter(
                 Q(testcase__module__in=request.data['module'])  &
@@ -92,6 +91,8 @@ class TestPlanningView(generics.GenericAPIView):
                         "description": serializer.data['description'] if serializer.data.get('description') else "",
                         "module": serializer.data['module'],
                         "output_counts": request.data['output_counts'],
+                        "priority": request.data['priority'],
+                        "testcase_type": request.data["testcase_type"] if request.data.get('testcase_type') else 'functional',
                         "testcases": testcases.data if testcases.data else "No testcases Matching this Creteria",
                     },
                     "status_code": status.HTTP_200_OK,
@@ -105,6 +106,8 @@ class TestPlanningView(generics.GenericAPIView):
                     "description": serializer.data['description'] if serializer.data.get('description') else "",
                     "module": serializer.data['module'],
                     "output_counts": request.data['output_counts'],
+                    "priority": request.data['priority'],
+                    "testcase_type": request.data["testcase_type"] if request.data.get('testcase_type') else 'functional',
                     "testcases": "No testcases Found Matching this Creteria",
                 },
                 "status_code": status.HTTP_200_OK,
@@ -173,8 +176,8 @@ class ClassicOptionAPI(APIView):
             "status": status.HTTP_200_OK,
             "data": {
                 'testcase_type': [{
-                    "id": "functionality",
-                    "name": "Functionality",
+                    "id": "functional",
+                    "name": "Functional",
                 }],
                 'priority': get_priority,
             },
