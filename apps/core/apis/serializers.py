@@ -193,7 +193,7 @@ class TestPlanSerializer(serializers.Serializer):
         child=serializers.CharField(),
     )
     priority = serializers.CharField(max_length=200, required=False)
-    testcase_type = serializers.CharField(max_length=200, default='functionality', required=False)
+    testcase_type = serializers.CharField(max_length=200, default='functional', required=False)
 
     def to_representation(self, instance):
         represent = super().to_representation(instance)

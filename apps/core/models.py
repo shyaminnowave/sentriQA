@@ -117,7 +117,7 @@ class TestPlan(TimeStampedModel):
     output_counts = models.IntegerField(_('Number of Cases'), default=0, blank=True, null=True,
                                          validators=[MinValueValidator(0), MaxValueValidator(100)])
     modules = models.ManyToManyField(Module, blank=True, related_name='modules', null=True)
-    testcase_type = models.CharField(max_length=20, default='functionality', blank=True, null=True)
+    testcase_type = models.CharField(max_length=20, default='functional', blank=True, null=True)
     modes = models.CharField(choices=ModeChoices.choices, default=ModeChoices.CLASSIC, max_length=20)
     testcases = models.ManyToManyField(TestCaseModel, through='TestScore', blank=True, null=True)
 
