@@ -80,7 +80,7 @@ class TestPlanningView(generics.GenericAPIView):
             queryset = TestCaseMetric.objects.filter(
                 Q(testcase__module__in=request.data['module'])  &
                 Q(testcase__priority=request.data['priority']) &
-                Q(testcase__testcase_type='functionality')
+                Q(testcase__testcase_type='functional')
             )[0:request.data['output_counts']]
             testcases = TestScoreSerializer(queryset, many=True)
             if queryset:
@@ -93,7 +93,7 @@ class TestPlanningView(generics.GenericAPIView):
                         "output_counts": request.data['output_counts'],
                         "priority": request.data['priority'],
                         "testcase_type": request.data["testcase_type"] if request.data.get('testcase_type') else 'functional',
-                        "testcases": testcases.data if testcases.data else "No testcases Matching this Creteria",
+                        "testcases": testcases.data if testcases.data else "No testcases Matching this Criteria",
                     },
                     "status_code": status.HTTP_200_OK,
                     "message": "success",
@@ -108,12 +108,12 @@ class TestPlanningView(generics.GenericAPIView):
                     "output_counts": request.data['output_counts'],
                     "priority": request.data['priority'],
                     "testcase_type": request.data["testcase_type"] if request.data.get('testcase_type') else 'functional',
-                    "testcases": "No testcases Found Matching this Creteria",
+                    "testcases": "No testcases Found Matching this Criteria",
                 },
                 "status_code": status.HTTP_200_OK,
                 "message": "success",
             }
-            return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
+            return Response(response_format, status=status.HTTP_200_OK)
         response_format = {
             "status": status.HTTP_400_BAD_REQUEST,
             "data": None,
