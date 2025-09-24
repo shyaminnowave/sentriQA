@@ -183,7 +183,7 @@ class CreateTestPlanSerializer(serializers.Serializer):
 class TestPlanSerializer(serializers.Serializer):
 
     name = serializers.CharField(max_length=200, allow_blank=True, required=False)
-    description = serializers.CharField(max_length=200, allow_blank=True, required=False)
+    description = serializers.CharField(allow_blank=True, required=False)
     output_counts = serializers.IntegerField(
         required=True,
         min_value=1,

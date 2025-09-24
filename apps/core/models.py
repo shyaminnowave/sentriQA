@@ -68,12 +68,6 @@ class TestCaseMetric(TimeStampedModel):
         max_time = cls.objects.values_list('execution_time', flat=True).distinct()
         return max(max_time) if max_time else 0
 
-    def set_max_rpn(self, value):
-        if self.max_rpn > value:
-            self.max_rpn = value
-            self.save()
-        return self.max_rpn
-
     def get_risk_score(self):
         return Decimal(self.impact * self.likelihood) / 25
 

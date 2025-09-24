@@ -17,4 +17,5 @@ urlpatterns = [
     path('plan/<int:id>', views.PlanDetailsView.as_view(), name='plan-detail'),
     path('test-scores', views.TestScores.as_view(), name='test-scores'),
     path('get-excel', views.TestScoreExcel.as_view(), name='get-excel'),
+    path('convert', views.ConvertAPIView.as_view(), name='convert'),
 ]

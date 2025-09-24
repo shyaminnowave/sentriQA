@@ -310,3 +310,40 @@ class PlanDetailsView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         queryset = TestPlan.objects.get(id=self.kwargs['id'])
         return queryset
+
+
+class ConvertAPIView(APIView):
+
+    def get_modules(self, modules):
+        if modules:
+            modules = Module.objects.filter(name__in=modules).values('id', 'name')
+            return list(modules)
+        return []
+
+    def post(self, request, *args, **kwargs):
+        if request.method == 'POST':
+            modules = request.data.get('module') if request.data.get('module') else []
+            name = request.data.get('name') if 'name' in request.data else ""
+            description = request.data.get('description') if 'description' in request.data else ""
+            priority = request.data.get('priority') if 'priority' in request.data else ""
+            response_format = {
+                "status": "Success",
+                "data": {
+                    "name": name,
+                    "description": description,
+                    "priority": priority,
+                    "modules": self.get_modules(modules),
+                },
+                "status_code": status.HTTP_200_OK,
+                "message": "Success"
+            }
+            return Response(
+                response_format,
+                status=status.HTTP_200_OK
+            )
+        return Response({
+                "status": status.HTTP_400_BAD_REQUEST,
+                "data": None,
+                "status_code": status.HTTP_400_BAD_REQUEST,
+                "message": "ERROR"
+            }, status=status.HTTP_400_BAD_REQUEST)

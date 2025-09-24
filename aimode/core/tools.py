@@ -41,7 +41,7 @@ def sql_query_generator(user_query)->str:
         # Use LangChain OpenAI
         response = llm.invoke(sql_generation_prompt)
         sql_query = response.content
-        
+        logger.info(f'SQL Query Generated:\n{sql_query}')
         return sql_query
     except Exception as e:
         logger.error(e)

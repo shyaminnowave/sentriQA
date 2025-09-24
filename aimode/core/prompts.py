@@ -47,13 +47,12 @@ def get_all_table_columns(conn) -> Dict[str, List[str]]:
     return {table: cols for table, cols in rows}
 
 
-
 SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient SQL Query. 
             IMPORTANT: You must ONLY use the tables and columns listed below. Do not assume or guess table names.
-            
+
             Available SQL Tables:
             $table_names
-            
+
             ---------
             SQL table descriptions (including all available columns):
             $table_descriptions
@@ -67,9 +66,11 @@ SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient
             2. ONLY use tables and columns that are listed above
             3. If you need to query about sellers, look for a table that might contain seller information
             4. If you're unsure about which table to use, ask for clarification
+            5. ALWAYS use ONLY tables from `core` schema. **Include the schema in the query** (e.g., core.core_module).
     """
 
-def build_sql_generation_prompt(conn,user_query) -> str:
+
+def build_sql_generation_prompt(conn, user_query) -> str:
     """Builds a SQL Query generation prompt by injecting database tables and their descriptions into a template.
 
     Args:
@@ -78,13 +79,12 @@ def build_sql_generation_prompt(conn,user_query) -> str:
         A string containing the formatted SQL Query generation prompt.
     """
 
-    table_names=get_sql_table_names(conn)
-    table_descriptions=get_all_table_columns(conn)
+    table_names = get_sql_table_names(conn)
+    table_descriptions = get_all_table_columns(conn)
 
-    prompt=SQL_QUERY_GENERATION_BASE_PROMPT
-    return Template(prompt).substitute(table_names=table_names, table_descriptions=table_descriptions, user_query=user_query)
-
-
+    prompt = SQL_QUERY_GENERATION_BASE_PROMPT
+    return Template(prompt).substitute(table_names=table_names, table_descriptions=table_descriptions,
+                                       user_query=user_query)
 
 
 table_columns = ", ".join(
@@ -114,13 +114,13 @@ When the user asks to generate a **test plan** or **test case**:
 5. If `output_counts` is missing, suggest one of [2, 4, 5, 10] (or let the user specify a custom value).
 6. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
 7. Automatically generate a `name` and `description` for the test plan.
+8. ALWAYS use ONLY tables from `core` schema to generate SQL query (e.g., WHERE table_schema = 'core';). 
 """
 
 AGENT_PROMPT = ChatPromptTemplate.from_messages([
     ("system", AGENT_PROMPT_TEXT.strip()),
     ("placeholder", "{messages}"),
 ])
-
 
 SUGGESTION_LLM_PROMPT_TEXT = """\
 You are an expert in Structuring Data. \
