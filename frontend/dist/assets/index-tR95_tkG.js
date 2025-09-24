@@ -1091,7 +1091,7 @@ Please report this to https://github.com/markedjs/marked.`,e){let r="<p>An error
 		border-radius: 10px;
 		box-sizing: border-box;
 	}
-	.test-plan-generator > :first-child {
+	.test-plan-generator > :first-of-type {
 		width: 35%;
 		padding: 10px 30px 10px 30px;
 	}
