@@ -16,6 +16,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from drf_spectacular.types import OpenApiTypes
 from apps.core.apis.serializers import AITestPlanSerializer
 from aimode.chatbot import get_llm_response
+from apps.core.helpers import generate_score
 
 @extend_schema(tags=["Modules List API"])
 class ModuleAPIView(generics.ListAPIView):
@@ -75,6 +76,7 @@ class TestPlanningView(generics.GenericAPIView):
     serializer_class = TestPlanSerializer
 
     def post(self, request, *args, **kwargs):
+        print('c')
         serializer = TestPlanSerializer(data=request.data)
         if serializer.is_valid():
             queryset = TestCaseMetric.objects.filter(

@@ -9,6 +9,7 @@ import json
 from aimode.core.prompts import build_sql_generation_prompt, get_sql_table_names
 from aimode.core.llms import llm
 from dotenv import load_dotenv
+from apps.core.helpers import generate_score
 
 load_dotenv()
 
@@ -155,8 +156,6 @@ def generate_testplan(name:str, description:str, output_counts:int, module_names
     tsp_params["module_ids"] = get_ids_by_module_names(tsp_params['module_names'] or [])
 
     if tsp_params["output_counts"] and tsp_params["module_names"] and tsp_params["priority"]:
-
-        url = f"{site_url}/api/test-plan"
         payload = {
             "name": tsp_params['name'] or "Test Plan for Modules",
             "description": tsp_params['description'] or "This test plan focuses on ensuring the functionalities and integration tests",
@@ -167,11 +166,9 @@ def generate_testplan(name:str, description:str, output_counts:int, module_names
 
         logger.info(f"Payload: {payload}")
 
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()  # Raise if not 2xx
-
-        tcs_data = response.json()
-
+        response = generate_score(payload)
+        tcs_data = response
         logger.info(f"Status Code: {response.status_code}")
         return tcs_data
+    else:
+        return None

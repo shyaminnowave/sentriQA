@@ -1,10 +1,20 @@
 from rest_framework.generics import get_object_or_404
 from django.http import Http404
-from apps.core.models import TestCaseModel, Module
+from apps.core.models import TestCaseModel, Module, TestCaseMetric
 from django.db.models import Q
+from apps.core.testscore import TestCaseScore
+from rest_framework import status
 
 
 class QueryHelpers:
+
+    @staticmethod
+    def get_module_by_id(id: int):
+        obj = get_object_or_404(
+            Module,
+            id=id
+        )
+        return obj.name if obj is not None else None
 
     @staticmethod
     def get_module_instance(name):
@@ -22,3 +32,46 @@ class QueryHelpers:
         except Exception as e:
             print(e)
             return False
+
+
+def generate_score(data):
+    print('testing')
+    queryset = TestCaseMetric.objects.filter(
+                Q(testcase__module__in=data.get('module'))  &
+                Q(testcase__priority=data.get('priority')) &
+                Q(testcase__testcase_type='functional')
+            )[0:data.get('output_counts')]
+    module__name = Module.objects.filter(
+        id__in=data.get('module')
+    ).values_list('name', flat=True)
+    results = []
+    if queryset is not None:
+        score_obj = TestCaseScore()
+        score = score_obj.calculate_scores(queryset)
+        for match in score:
+            # Convert to appropriate data types
+            result = {
+                "testcase": str(match.testcase_name),
+                "module": str(match.module),
+                "priority": data.get('priority'),
+                "score": float(match.total_score),
+            }
+            results.append(result)
+    response = {
+            "name": data.get('name', ""),
+            "description": data.get('description', ""),
+            "module": module__name,
+            "output_counts": data.get('output_counts'),
+            "priority": data.get('priority', 0),
+            "generate_test_count": len(results) if results else "No testcase found for this Criteria",
+            "testcase_type": data.get('testcase_type', "functional"),
+            "testcases": results,
+        }
+    response_format = {
+        "status": status.HTTP_200_OK,
+        "data": response,
+        "status_code": status.HTTP_200_OK,
+        "message": "success",
+    }
+    print('response_format', response_format)
+    return response_format
