@@ -81,20 +81,16 @@ def execute_sql_query(sql_query)->list:
 
 
 def get_id_module_mapping():
-    try:
-        url = os.getenv("SITE_URL")
-        module_response = requests.get(f"{url}/api/module/")
-        module_response.raise_for_status()  # Raise if not 2xx
-        return module_response.json()
-    except requests.HTTPError as e:
-        logger.error(f"HTTP error fetching modules: {e} - Status: {module_response.status_code} - Text: {module_response.text}")
-        return []
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decode error in module mapping: {e} - Text: {module_response.text}")
-        return []
-    except Exception as e:
-        logger.error(f"Unexpected error fetching modules: {e}")
-        return []
+    query = "SELECT DISTINCT cm.name, cm.id FROM core.core_module AS cm"
+    with conn.cursor() as cur:
+        cur.execute(query)
+        results = cur.fetchall()
+
+    formatted_results = sorted(
+        [{"id": id_, "name": name} for name, id_ in results],
+        key=lambda x: x["id"]
+    )
+    return formatted_results
 
 
 def get_ids_by_module_names(module_names: list[str]) -> list[int]:
