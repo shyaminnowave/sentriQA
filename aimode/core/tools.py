@@ -163,12 +163,8 @@ def generate_testplan(name:str, description:str, output_counts:int, module_names
             "module": tsp_params["module_ids"],
             "priority": tsp_params['priority']
         }
-
         logger.info(f"Payload: {payload}")
-
-        response = generate_score(payload)
-        tcs_data = response
-        logger.info(f"Status Code: {response.status_code}")
+        tcs_data = generate_score(payload)
         return tcs_data
     else:
         return None

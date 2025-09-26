@@ -60,7 +60,7 @@ def generate_score(data):
     response = {
             "name": data.get('name', ""),
             "description": data.get('description', ""),
-            "module": module__name,
+            "module": list(module__name),
             "output_counts": data.get('output_counts'),
             "priority": data.get('priority', 0),
             "generate_test_count": len(results) if results else "No testcase found for this Criteria",
