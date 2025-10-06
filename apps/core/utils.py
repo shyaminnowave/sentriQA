@@ -35,6 +35,60 @@ class ExcelFileFactory(FileFactory):
         pass
 
 
+class DemoExcelFileFactory(ExcelFileFactory):
+
+    def __init__(self, file):
+        super().__init__(file)
+        self.ws = self._init_workbook()
+
+    def get_failure_rate(self, fail, runs, weight):
+        failure_rate = fail / runs
+        return failure_rate * weight
+
+    def get_impact_value(self, value):
+        if value == 'Yes':
+            return 1
+        return 0.5
+
+    def import_data(self):
+        try:
+            lst = []
+            matrix = []
+            for row in self.ws.iter_rows(min_row=3, values_only=True):
+                if row[1] is not None:
+                    temp = {
+                        "name": row[1]
+                    }
+                    lst.append(TestCaseModel(**temp))
+                    _matrix = {
+                        "testcase": row[1],
+                        "likelihood": row[4],
+                        "impact": row[5],
+                        "failure_rate": row[7],
+                        "failure": row[8],
+                        "total_runs": row[9],
+                        "direct_impact": self.get_impact_value(row[10]),
+                        "defects": row[12],
+                        "severity": row[13],
+                        "feature_size": row[14],
+                        "execution_time": row[15]
+                    }
+                    print(_matrix)
+                    matrix.append(_matrix)
+            TestCaseModel.objects.bulk_create(lst)
+            for i in range(len(matrix)):
+                matrix[i]['testcase'] = QueryHelpers.get_test_case_instance(matrix[i]['testcase'])
+                matrix[i] = TestCaseMetric(**matrix[i])
+            with transaction.atomic():
+                TestCaseMetric.objects.bulk_create(matrix)
+            return True
+        except Exception as e:
+            print('error', e)
+            return False
+
+
+
+
 class TestcaseImportExcel(ExcelFileFactory):
 
     def __init__(self, file):
@@ -68,39 +122,6 @@ class TestcaseImportExcel(ExcelFileFactory):
         return False
 
 
-    # def import_data(self):
-    #     try:
-    #         current_module = None
-    #         lst = []
-    #         matrix = []
-    #         for row in self.ws.iter_rows(
-    #             min_row=2,
-    #             values_only=True,
-    #         ):
-    #             if current_module != row[0]:
-    #                 current_module = QueryHelpers.get_module_instance(row[0])
-    #             _temp = {
-    #                 "name": row[3],
-    #                 "priority": self.get_priority(row[8]),
-    #                 "status": "completed",
-    #                 "module": current_module,
-    #             }
-    #             _matrix = {
-    #                         "testcase": row[3],
-    #                         "likelihood": row[4],
-    #                         "impact": row[7],
-    #                         "failure_rate": row[9],
-    #                         "failure": row[10],
-    #                         "total_runs": row[11],
-    #                         "direct_impact": row[12],
-    #                         "defects": row[14],
-    #                         "severity": 0,
-    #                         "feature_size": 0,
-    #                         "execution_time": row[15]
-    #                     }
-    #     except Exception as e:
-    #         print(e)
-
     @staticmethod
     def get_failure_rate(failure, total_runs):
         if failure and total_runs:
@@ -116,35 +137,44 @@ class TestcaseImportExcel(ExcelFileFactory):
             matrix = []
             for row in self.ws.iter_rows(
                 min_row=2, values_only=True
-            ):
+            ):  
                 if row[1] is not None:
-                    current_module = QueryHelpers.get_module_instance(row[2])
-                _temp = {
-                    "name": row[1],
-                    "priority": self.get_priority(row[7]),
-                    "status": "completed",
-                    "module": current_module,
-                }
-                lst.append(TestCaseModel(**_temp))
-                _matrix = {
-                    "testcase": row[1],
-                    "likelihood": row[4],
-                    "impact": row[6],
-                    "failure_rate": round(self.get_failure_rate(row[10], row[11])),
-                    "failure": row[10],
-                    "total_runs": row[11],
-                    "direct_impact": row[12],
-                    "defects": row[14],
-                    "severity": 0,
-                    "feature_size": 0,
-                    "execution_time": row[15]
-                }
-                matrix.append(_matrix)
-            TestCaseModel.objects.bulk_create(lst)
-            for i in range(len(matrix)):
-                matrix[i]['testcase'] = QueryHelpers.get_test_case_instance(matrix[i]['testcase'])
-                matrix[i] = TestCaseMetric(**matrix[i])
-
+                    current_module = QueryHelpers.get_module_instance(row[1])
+                if row[4] != None:
+                    if not QueryHelpers.check_testcase_exists(row[4]):             
+                        _temp = {
+                            "name": row[4],
+                            "priority": self.get_priority(row[7]),
+                            "status": "completed",
+                            "module": current_module,
+                        }
+                        lst.append(TestCaseModel(**_temp))
+                if row[4] is not None:
+                    _matrix = {
+                        "testcase": row[4],
+                        "likelihood": row[5],
+                        "impact": row[6],
+                        "failure_rate": round(self.get_failure_rate(row[10], row[11])),
+                        "failure": row[10],
+                        "total_runs": row[11],
+                        "direct_impact": row[12],
+                        "defects": row[14],
+                        "severity": 0,
+                        "feature_size": 0,
+                        "execution_time": row[15]
+                    }
+                    matrix.append(_matrix)
+            if lst:
+                TestCaseModel.objects.bulk_create(lst)
+                
+            for i in range(len(matrix) - 1, -1, -1):
+                if not QueryHelpers.check_matrix_id(matrix[i]['testcase']):
+                    print('inside', matrix[i]['testcase'])
+                    matrix[i]['testcase'] = QueryHelpers.get_test_case_instance(matrix[i]['testcase'])
+                    matrix[i] = TestCaseMetric(**matrix[i])
+                else:
+                    matrix.pop(i)
+            print('matrix', matrix)
             with transaction.atomic():
                 TestCaseMetric.objects.bulk_create(matrix)
             return True

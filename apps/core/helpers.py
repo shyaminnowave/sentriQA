@@ -27,18 +27,39 @@ class QueryHelpers:
             instance = get_object_or_404(TestCaseModel, Q(name=value))
             return instance
         except Http404 as err:
-            print(err)
             return False
         except Exception as e:
-            print(e)
+            return False
+        
+    @staticmethod
+    def check_testcase_exists(name):
+        try:
+            if name == "":
+                return False
+            instance = get_object_or_404(TestCaseModel, Q(name=name))
+            return True if instance else False
+        except Http404 as err:
+            return False
+        except Exception as e:
+            return False
+        
+    @staticmethod
+    def check_matrix_id(testcase):
+        try:
+            instance = get_object_or_404(
+                TestCaseMetric,
+                Q(testcase__name=testcase)
+            )
+            return True if instance else False
+        except Http404 as err:
+            return False
+        except Exception as e:
             return False
 
 
 def generate_score(data):
-    print('testing')
     queryset = TestCaseMetric.objects.filter(
                 Q(testcase__module__in=data.get('module'))  &
-                Q(testcase__priority=data.get('priority')) &
                 Q(testcase__testcase_type='functional')
             )[0:data.get('output_counts')]
     module__name = Module.objects.filter(
@@ -51,16 +72,19 @@ def generate_score(data):
         for match in score:
             # Convert to appropriate data types
             result = {
+                "id": match.testcase_id,
                 "testcase": str(match.testcase_name),
-                "module": str(match.module),
-                "priority": data.get('priority'),
-                "score": float(match.total_score),
+                "modules": str(match.module),
+                "mode": "ai",
+                "generated": True,
+                "priority": str(match.priority),
+                "testscore": float(match.total_score),
             }
             results.append(result)
     response = {
             "name": data.get('name', ""),
             "description": data.get('description', ""),
-            "module": list(module__name),
+            "modules": list(module__name),
             "output_counts": data.get('output_counts'),
             "priority": data.get('priority', 0),
             "generate_test_count": len(results) if results else "No testcase found for this Criteria",
@@ -73,5 +97,4 @@ def generate_score(data):
         "status_code": status.HTTP_200_OK,
         "message": "success",
     }
-    print('response_format', response_format)
     return response_format

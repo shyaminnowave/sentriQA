@@ -1,8 +1,11 @@
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass
 from django.db.models import QuerySet
+from apps.core.models import RPNValue
 from django.core.exceptions import ValidationError
+from apps.core.models import TestCaseMetric
+from apps.core.datacls import TestCaseScoreResult
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,30 +27,6 @@ class ScoreWeights:
                 raise ValueError(f"{field_name} must be non-negative, got {value}")
 
 
-@dataclass
-class TestCaseScoreResult:
-    """Result object containing score and breakdown"""
-    testcase_id: int
-    testcase_name: str
-    total_score: Decimal
-    module: str
-    risk_component: Decimal
-    failure_rate_component: Decimal
-    change_impact_component: Decimal
-    defect_component: Decimal
-    execution_penalty_component: Decimal
-    normalized_score: Optional[Decimal] = None
-
-    def to_dict(self) -> Dict[str, Union[int, float]]:
-        """Convert to dictionary for serialization"""
-        return {
-            'testcase_id': self.testcase_id,
-            'total_score': float(self.total_score),
-            'testcase_name': self.testcase_name,
-            'module': self.module,
-        }
-
-
 class TestCaseScore:
     """
     Enterprise-grade test case scoring system implementing risk-based prioritization.
@@ -61,9 +40,19 @@ class TestCaseScore:
     """
 
     # Constants for score calculation
-    MAX_RPN = 25  # Maximum possible RPN (100 * 100)
     PRECISION = 2
-    DEFAULT_MAX_EXECUTION_TIME = 0  # 5 minutes default
+    DEFAULT_MAX_EXECUTION_TIME = 0
+    # TestCaseMetric.get_max_time() # 5 minutes default
+
+    def get_max_rpn(self, value: Decimal) -> Decimal:
+        get_max = RPNValue.get_solo()
+
+        if get_max.max_value is None or get_max.max_value < value:
+            get_max.max_value = value
+            get_max.save()
+            return Decimal(value)
+
+        return get_max.max_value
 
     def calculate_scores(
             self,
@@ -121,19 +110,14 @@ class TestCaseScore:
         """Calculate score for a single test case metric."""
         # Risk Calculation (RPN)
         risk_component = Decimal(self._calculate_risk_component(metric))
-
         # Historical Failure Rate
         failure_rate_component = Decimal(self._calculate_failure_rate_component(metric))
-
         # Code Change Impact
         change_impact_component = Decimal(self._calculate_change_impact_component(metric))
-
         # Defect Analysis
         defect_component = Decimal(self._calculate_defect_component(metric))
-
         # Execution Time Penalty
         execution_penalty = Decimal(self._calculate_execution_penalty(metric, max_execution_time))
-
         # Total Score Calculation
         total_score = (
                 (risk_component +
@@ -149,7 +133,8 @@ class TestCaseScore:
         return TestCaseScoreResult(
             testcase_id=metric.testcase.id,
             testcase_name=metric.testcase.name,
-            module=metric.testcase.module,
+            module=metric.testcase.module.name if metric.testcase.module else "N/A",
+            priority=metric.testcase.priority,
             total_score=self._round_decimal(total_score),
             risk_component=self._round_decimal(risk_component),
             failure_rate_component=self._round_decimal(failure_rate_component),
@@ -158,25 +143,32 @@ class TestCaseScore:
             execution_penalty_component=self._round_decimal(execution_penalty)
         )
 
+    def _calculate_priority(self, value):
+        if value == 'class_1':
+            return Decimal(3)
+        elif value == 'class_2':
+            return Decimal(2)
+        elif value == 'class_3':
+            return Decimal(1)
+        else:
+            return Decimal(value)
+
     def _calculate_risk_component(self, metric) -> Decimal:
         """Calculate Risk Priority Number (RPN) component."""
         impact = metric.impact or 0
         likelihood = metric.likelihood or 0
-
-        rpn = Decimal(impact * likelihood) / 25
-
-        return rpn
-        # Normalize RPN to a 0-100 scale
-        # if self.MAX_RPN > 0:
-        #     risk_weight = rpn / Decimal(str(self.MAX_RPN))
-        #     return risk_weight * Decimal('100')
-        #
-        # return Decimal('0')
+        rpn = Decimal(impact * likelihood)
+        max_rpn = self.get_max_rpn(rpn)
+        if max_rpn > 0:
+            risk_weight = Decimal(rpn / max_rpn)
+            return Decimal(risk_weight * self._calculate_priority(metric.testcase.priority))
+        return Decimal(0)
 
     def _calculate_failure_rate_component(self, metric) -> Decimal:
         """Calculate failure rate component."""
         if metric.total_runs and metric.total_runs > 0:
             failure_rate = Decimal(str(metric.failure or 0)) / Decimal(str(metric.total_runs))
+            return failure_rate * metric.failure_rate
         else:
             failure_rate = metric.failure_rate or Decimal('0')
 
@@ -190,43 +182,27 @@ class TestCaseScore:
         if direct_impact >= 1:
             return Decimal('1')  # High impact
         else:
-            return Decimal('0')  # No impact
+            return Decimal('0.5')  # No impact
 
     def _calculate_defect_component(self, metric) -> Decimal:
         """Calculate defect analysis component."""
         defects = metric.defects or 0
         severity = metric.severity or 0
-        feature_size = metric.feature_size # Prevent division by zero
-
-        # Defect Density = Total Defects / Feature Size
-        defect_weight = 0.0
-
-        # defect_density = Decimal(defects) / Decimal(feature_size)
-        # print('defect_density', defect_density)
-        # # Defect Weight = Severity × Defect Density
-        # defect_weight = Decimal(str(severity)) * defect_density
-        # print('defect_weight', defect_weight)
+        feature_size = metric.feature_size
+        if not feature_size or feature_size == 0:
+            return Decimal('0')
+        defect_density = Decimal(defects) / Decimal(feature_size)
+        defect_weight = Decimal(str(severity)) * defect_density
         return defect_weight
-        # Normalize to 0-100 scale (assuming max severity = 10, max reasonable density = 10)
-        # 10 * 10
-        # if max_defect_weight > 0:
-        #     return min((defect_weight / max_defect_weight) * Decimal('100'), Decimal('100'))
-        #
-        # return Decimal('0')
 
     def _calculate_execution_penalty(self, metric, max_execution_time: Decimal) -> Decimal:
         """Calculate execution time penalty."""
         execution_time = metric.execution_time or Decimal('0')
-        #
-        # if max_execution_time <= 0 or execution_time <= 0:
-        #     return Decimal('0')
-        return 0
-
-
-        # Penalty = (Execution Time / Max Execution Time) * 100
-        # penalty_ratio = execution_time / max_execution_time
-        # print('penalty_ratio', penalty_ratio)
-        # return min(penalty_ratio * Decimal('100'), Decimal('100'))
+        max_execution_time = max_execution_time or self.DEFAULT_MAX_EXECUTION_TIME
+        if max_execution_time:
+            get_execution_time = Decimal(str(execution_time)) / Decimal(str(max_execution_time))
+            return get_execution_time
+        return Decimal(0)
 
     def _normalize_scores(self, results: List[TestCaseScoreResult]) -> List[TestCaseScoreResult]:
         """Normalize scores to 0-100 range."""

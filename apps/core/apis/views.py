@@ -1,22 +1,27 @@
 import openpyxl
 from django.http import HttpResponse
 from rest_framework import generics, viewsets
-from rest_framework.generics import CreateAPIView
+from rest_framework.generics import CreateAPIView, get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from apps.core.models import TestCaseMetric, TestCaseModel, Module, TestPlan, PriorityChoice
-from apps.core.utils import TestcaseImportExcel
+from apps.core.models import TestCaseMetric, TestCaseModel, Module, TestPlan, PriorityChoice, HistoryTestPlan
+from apps.core.utils import TestcaseImportExcel, DemoExcelFileFactory
 from apps.core.apis.serializers import TestcaseListSerializer, TestCaseSerializer, FileUploadSerializer, \
     TestMetrixSerializer, TestSerializer, ModuleSerializer, TestPlanSerializer, TestScoreSerializer, \
-    TestCaseNameSerializer, CreateTestPlanSerializer, TestPlanningSerializer, PlanSerializer
+    TestCaseNameSerializer, CreateTestPlanSerializer, TestPlanningSerializer, PlanSerializer, TestCaseOptionSerializer, \
+    TestCaseScoreSerializer, SearchSerializer, PlanHistorySerializer, MetrixSerializer, HistroryPlanDetailsSerializer
+from sentriQA.helpers.custom_generics import CustomGenericsAPIView as cgenerics
 from apps.core.utils import QueryHelpers
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+from apps.core.pagination import CustomPagination, CustomPageNumberPagination
 from apps.core.apis.serializers import AITestPlanSerializer
+from sentriQA.helpers.renders import ResponseInfo
 from aimode.chatbot import get_llm_response
 from apps.core.helpers import generate_score
+
 
 @extend_schema(tags=["Modules List API"])
 class ModuleAPIView(generics.ListAPIView):
@@ -28,6 +33,7 @@ class ModuleAPIView(generics.ListAPIView):
 @extend_schema(tags=["Testcase List API"])
 class TestCaseList(generics.ListAPIView):
 
+    pagination_class = CustomPagination
     queryset = TestCaseModel.objects.all()
     serializer_class = TestcaseListSerializer
 
@@ -36,6 +42,7 @@ class TestCaseList(generics.ListAPIView):
 class TestCaseView(generics.CreateAPIView):
 
     serializer_class = TestCaseSerializer
+
 
 @extend_schema(tags=["Testcase Detail API"])
 class TestCaseDetail(generics.RetrieveUpdateDestroyAPIView):
@@ -46,16 +53,13 @@ class TestCaseDetail(generics.RetrieveUpdateDestroyAPIView):
         queryset = TestCaseModel.objects.get(slug=self.kwargs['slug']).select_related('testcase')
         return queryset
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 @extend_schema(tags=["Testcase Excel Upload API"])
 class FileUploadView(APIView):
+
+    def __init__(self, **kwargs):
+        self.response_format = ResponseInfo().response
+        super().__init__(**kwargs)  
 
     serializer_class = FileUploadSerializer
 
@@ -63,12 +67,24 @@ class FileUploadView(APIView):
         serializer = FileUploadSerializer(data=request.data)
         if serializer.is_valid():
             instance = TestcaseImportExcel(self.request.data['file'])
-            out = instance.import_data()
-            if instance:
-                return Response(True)
+            upload_status = instance.import_data()
+            if instance and upload_status:
+                self.response_format['status'] = True
+                self.response_format['status_code'] = status.HTTP_200_OK
+                self.response_format['message'] = "File Uploaded Successfully"
+                self.response_format['data'] = upload_status
+                return Response(self.response_format, status=status.HTTP_200_OK)
             else:
-                return Response(False)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                self.response_format['status'] = False
+                self.response_format['status_code'] = status.HTTP_400_BAD_REQUEST
+                self.response_format['message'] = "Error While Uploading the File"
+                self.response_format['data'] = upload_status
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        self.response_format['status'] = False
+        self.response_format['status_code'] = status.HTTP_400_BAD_REQUEST
+        self.response_format['message'] = serializer.errors
+        self.response_format['data'] = None
+        return Response(self.response_format, status=status.HTTP_400_BAD_REQUEST)
 
 
 @extend_schema(tags=["Testcase Plan Creation API"])
@@ -76,63 +92,26 @@ class TestPlanningView(generics.GenericAPIView):
     serializer_class = TestPlanSerializer
 
     def post(self, request, *args, **kwargs):
-        print('c')
         serializer = TestPlanSerializer(data=request.data)
         if serializer.is_valid():
-            queryset = TestCaseMetric.objects.filter(
-                Q(testcase__module__in=request.data['module'])  &
-                Q(testcase__priority=request.data['priority']) &
-                Q(testcase__testcase_type='functional')
-            )[0:request.data['output_counts']]
-            testcases = TestScoreSerializer(queryset, many=True)
-            if queryset:
-                response_format = {
-                    "status": status.HTTP_200_OK,
-                    "data": {
-                        "name": serializer.data['name'] if serializer.data.get('name') else "",
-                        "description": serializer.data['description'] if serializer.data.get('description') else "",
-                        "module": serializer.data['module'],
-                        "output_counts": request.data['output_counts'],
-                        "priority": request.data['priority'],
-                        "generate_test_count": queryset.count(),
-                        "testcase_type": request.data["testcase_type"] if request.data.get('testcase_type') else 'functional',
-                        "testcases": testcases.data if testcases.data else "No testcases Matching this Criteria",
-                    },
-                    "status_code": status.HTTP_200_OK,
-                    "message": "success",
-                }
-                return Response(response_format, status=status.HTTP_200_OK)
-            response_format = {
-                "status": status.HTTP_200_OK,
-                "data": {
-                    "name": serializer.data['name'] if serializer.data.get('name') else "",
-                    "description": serializer.data['description'] if serializer.data.get('description') else "",
-                    "module": serializer.data['module'],
-                    "output_counts": request.data['output_counts'],
-                    "priority": request.data['priority'],
-                    "generate_test_count": queryset.count(),
-                    "testcase_type": request.data["testcase_type"] if request.data.get('testcase_type') else 'functional',
-                    "testcases": "No testcases Found Matching this Criteria",
-                },
-                "status_code": status.HTTP_200_OK,
-                "message": "success",
-            }
-            return Response(response_format, status=status.HTTP_200_OK)
-        response_format = {
-            "status": status.HTTP_400_BAD_REQUEST,
-            "data": None,
-            "status_code": status.HTTP_400_BAD_REQUEST,
-            "message": serializer.errors,
-        }
-        return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
-
+            score = generate_score(request.data)
+            if score:
+                return Response(score, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "status": status.HTTP_400_BAD_REQUEST,
+                    "data": None,
+                    "status_code": status.HTTP_400_BAD_REQUEST,
+                    "message": "No Testcase Found for this Criteria"
+                }, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CreateTestPlanView(generics.GenericAPIView):
     serializer_class = CreateTestPlanSerializer
 
     def post(self, request, *args, **kwargs):
-        try:
+        # try:
             serializer = CreateTestPlanSerializer(data=request.data)
             if serializer.is_valid():
                 data = serializer.save()
@@ -160,14 +139,14 @@ class CreateTestPlanView(generics.GenericAPIView):
                 "message": "Error While Saving the TestPlan"
             }
             return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            response_format = {
-                "status": status.HTTP_400_BAD_REQUEST,
-                "data": None,
-                "status_code": status.HTTP_400_BAD_REQUEST,
-                "message": str(e),
-            }
-            return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
+        # except Exception as e:
+        #     response_format = {
+        #         "status": status.HTTP_400_BAD_REQUEST,
+        #         "data": None,
+        #         "status_code": status.HTTP_400_BAD_REQUEST,
+        #         "message": str(e),
+        #     }
+        #     return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
 
 
 @extend_schema(tags=["Classic Options API"])
@@ -189,6 +168,46 @@ class ClassicOptionAPI(APIView):
             "message": "Success",
         }
         return Response(response_format, status=status.HTTP_200_OK)
+
+
+class TestcaseOptionAPI(generics.GenericAPIView):
+
+    serializer_class = MetrixSerializer
+
+    def get_queryset(self):
+        search = self.request.query_params.get('search', None)
+        if search:
+            search_filers =  Q(testcase__name__icontains=search) | Q(testcase__module__name__icontains=search) | Q(testcase__testcase_type__icontains=search) | Q(testcase__priority__icontains=search)
+            if search.isdigit():
+                search_filers |= Q(testcase__id__exact=search)
+            queryset = TestCaseMetric.objects.select_related('testcase').filter(
+                search_filers
+            ).distinct()
+        else:
+            queryset = []
+        return queryset
+
+    def get(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        if serializer.data:
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TestcaseScore(generics.GenericAPIView):
+
+    serializer_class = TestCaseScoreSerializer
+
+    def get_queryset(self):
+        testcase_metrix = TestCaseMetric.objects.filter(testcase__id__in=self.kwargs['pk'])
+        return testcase_metrix
+
+    def post(self, request, *args, **kwargs):
+        serializer = TestMetrixSerializer(data=self.queryset(), many=True)
+        if serializer.data:
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
 
 
 @extend_schema(tags=["AI Testcase Plan Creation API"])
@@ -313,7 +332,23 @@ class PlanDetailsView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         queryset = TestPlan.objects.get(id=self.kwargs['id'])
+        print(queryset)
         return queryset
+    
+    def put(self, request, *args, **kwargs):
+        serializer = self.get_serializer(instance=self.get_object(), data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+    
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ConvertAPIView(APIView):
@@ -351,3 +386,89 @@ class ConvertAPIView(APIView):
                 "status_code": status.HTTP_400_BAD_REQUEST,
                 "message": "ERROR"
             }, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class TestPlanHistroryView(generics.ListAPIView):
+
+    serializer_class = PlanHistorySerializer
+
+    def get_queryset(self):
+        testplan_id = self.kwargs['id']
+        queryset = HistoryTestPlan.objects.filter(testplan_id=testplan_id).order_by('-created')
+        return queryset
+    
+    def list(self, request, *args, **kwargs):
+        try:
+            response = super().list(request, *args, **kwargs)
+            if response.status_code == status.HTTP_200_OK and response.data:
+                response_format = {
+                    "status": status.HTTP_200_OK,
+                    "data": response.data,
+                    "status_code": status.HTTP_200_OK,
+                    "message": "success",
+                }
+                return Response(response_format, status=status.HTTP_200_OK)
+            else:
+                response_format = {
+                    "status": status.HTTP_400_BAD_REQUEST,
+                    "data": None,
+                    "status_code": status.HTTP_400_BAD_REQUEST,
+                    "message": "No data Found",
+                }
+                return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            response_format = {
+                "status": status.HTTP_400_BAD_REQUEST,
+                "data": None,
+                "status_code": status.HTTP_400_BAD_REQUEST,
+                "message": str(e),
+            }
+            return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
+        
+    
+
+class HistoryPlanDetailsView(generics.RetrieveAPIView):
+
+    serializer_class = HistroryPlanDetailsSerializer
+
+    def get_object(self):
+        queryset = HistoryTestPlan.objects.get(id=self.kwargs['history_id'])
+        return queryset
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            response = super().get(request, *args, **kwargs)
+            if response.status_code == status.HTTP_200_OK:
+                response_format = {
+                    "status": status.HTTP_200_OK,
+                    "data": response.data,
+                    "status_code": status.HTTP_200_OK,
+                    "message": "success",
+                }
+                return Response(response_format, status=status.HTTP_200_OK)
+            else:
+                response_format = {
+                    "status": status.HTTP_400_BAD_REQUEST,
+                    "data": None,
+                    "status_code": status.HTTP_400_BAD_REQUEST,
+                    "message": "No data Found",
+                }
+                return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            response_format = {
+                "status": status.HTTP_400_BAD_REQUEST,
+                "data": None,
+                "status_code": status.HTTP_400_BAD_REQUEST,
+                "message": str(e),
+            }
+            return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TestingView(APIView):
+
+    def post(self, request, *args, **kwargs):
+        serializer = TestPlanSerializer(data=request.data)
+        if serializer.is_valid():
+            score = generate_score(request.data)
+            return Response(score, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
