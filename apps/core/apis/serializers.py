@@ -281,6 +281,7 @@ class ScoreSerializer(serializers.ModelSerializer):
         represent = super().to_representation(instance)
         represent['testcase'] = instance.testcases.name
         represent['testplan'] = instance.testplan.name
+        represent['generated'] = True
         represent['testscore'] = float(instance.testscore) if instance.testscore else 0
         return represent
 
