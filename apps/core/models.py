@@ -166,7 +166,7 @@ class TestScore(TimeStampedModel):
     testplan = models.ForeignKey(TestPlan, on_delete=models.CASCADE, related_name='scores', to_field='id')
     testcases = models.ForeignKey(TestCaseModel, related_name='testcases', blank=True, on_delete=models.CASCADE, null=True,)
     mode = models.CharField(choices=TestPlan.ModeChoices.choices, default=TestPlan.ModeChoices.AI, max_length=20, blank=True, null=True)
-    testscore = models.DecimalField(default=0, blank=True, null=True, decimal_places=2, max_digits=4)
+    testscore = models.DecimalField(default=0, blank=True, null=True, decimal_places=4, max_digits=10)
 
     def __str__(self): 
         return self.testplan.name
