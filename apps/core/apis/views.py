@@ -136,7 +136,7 @@ class CreateTestPlanView(generics.GenericAPIView):
                 "status": status.HTTP_400_BAD_REQUEST,
                 "data": None,
                 "status_code": status.HTTP_400_BAD_REQUEST,
-                "message": "Error While Saving the TestPlan"
+                "message": serializer.errors
             }
             return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
         # except Exception as e:

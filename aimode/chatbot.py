@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Any
 from aimode.core.agent import graph
 from langchain_core.messages import HumanMessage, ToolMessage
@@ -38,12 +39,13 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
 
     for msg in last_after_human:
         if isinstance(msg, ToolMessage) and msg.name == "generate_testplan":
-            if "error" not in msg.content.lower():
+            if msg:
                 try:
-                    content_dict["tcs_data"] = eval(msg.content)
+                    content_dict["tcs_data"] = json.loads(msg.content)
                 except Exception:
                     content_dict["tcs_data"] = {}
             else:
+                print("msg_error")
                 content_dict["tcs_data"] = {}
             break
 

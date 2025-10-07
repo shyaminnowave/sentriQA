@@ -144,7 +144,7 @@ class AITestPlanSerializer(serializers.Serializer):
 class CreateTestPlanSerializer(serializers.Serializer):
 
     name = serializers.CharField(max_length=200, allow_blank=True, required=False)
-    description = serializers.CharField(max_length=200, allow_blank=True, required=False)
+    description = serializers.CharField(allow_blank=True, required=False)
     output_counts = serializers.IntegerField(required=False)
     modules = serializers.ListSerializer(child=serializers.CharField(), write_only=True)
     modes = serializers.CharField(max_length=200, required=False)

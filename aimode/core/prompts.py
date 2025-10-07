@@ -111,7 +111,7 @@ When the user asks to generate a **test plan** or **test case**:
     **Important:** These values must match **exactly** (case and format) when used for test case generation.
 4. If `priority` is missing, suggest 3-4 options from: {module_priorities}.
     **Important:** These values must match **exactly** (case and format) when used for test case generation.
-5. If `output_counts` is missing, suggest one of [2, 4, 5, 10] (or let the user specify a custom value).
+5. If `output_counts` is missing, suggest one of [2, 4, 5, 10, 20, 30, 40, 50] (or let the user specify a custom value).
 6. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
 7. Automatically generate a `name` and `description` for the test plan.
 8. ALWAYS use ONLY tables from `core` schema to generate SQL query (e.g., WHERE table_schema = 'core';). 

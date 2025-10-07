@@ -61,7 +61,7 @@ def generate_score(data):
     queryset = TestCaseMetric.objects.filter(
                 Q(testcase__module__in=data.get('module'))  &
                 Q(testcase__testcase_type='functional')
-            )[0:data.get('output_counts')]
+            )
     module__name = Module.objects.filter(
         id__in=data.get('module')
     ).values_list('name', flat=True)
@@ -69,6 +69,9 @@ def generate_score(data):
     if queryset is not None:
         score_obj = TestCaseScore()
         score = score_obj.calculate_scores(queryset)
+        output_counts = data.get('output_counts', 0)
+        if len(score) > output_counts:
+            score = score[:output_counts]
         for match in score:
             # Convert to appropriate data types
             result = {
