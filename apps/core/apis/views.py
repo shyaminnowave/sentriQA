@@ -1,3 +1,4 @@
+from re import search
 import openpyxl
 from django.http import HttpResponse
 from rest_framework import generics, viewsets
@@ -5,22 +6,23 @@ from rest_framework.generics import CreateAPIView, get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from apps.core.models import TestCaseMetric, TestCaseModel, Module, TestPlan, PriorityChoice, HistoryTestPlan
+from apps.core.models import TestCaseMetric, TestCaseModel, Module, TestPlan, PriorityChoice, HistoryTestPlan, Project, TestPlanSession
 from apps.core.utils import TestcaseImportExcel, DemoExcelFileFactory
 from apps.core.apis.serializers import TestcaseListSerializer, TestCaseSerializer, FileUploadSerializer, \
     TestMetrixSerializer, TestSerializer, ModuleSerializer, TestPlanSerializer, TestScoreSerializer, \
     TestCaseNameSerializer, CreateTestPlanSerializer, TestPlanningSerializer, PlanSerializer, TestCaseOptionSerializer, \
-    TestCaseScoreSerializer, SearchSerializer, PlanHistorySerializer, MetrixSerializer, HistroryPlanDetailsSerializer
-from sentriQA.helpers.custom_generics import CustomGenericsAPIView as cgenerics
+    TestCaseScoreSerializer, SearchSerializer, PlanHistorySerializer, MetrixSerializer, HistroryPlanDetailsSerializer, \
+    TestplanSessionSerializer, SessionSerializer
 from apps.core.utils import QueryHelpers
-from django.db.models import Q
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
-from drf_spectacular.types import OpenApiTypes
-from apps.core.pagination import CustomPagination, CustomPageNumberPagination
+from django.db.models import Q, Max, DecimalField, IntegerField
+from drf_spectacular.utils import extend_schema
+from apps.core.pagination import CustomPagination, CustomLimitOffsetPagination
 from apps.core.apis.serializers import AITestPlanSerializer
-from sentriQA.helpers.renders import ResponseInfo
+from sentriQA.helpers import custom_generics as c
 from aimode.chatbot import get_llm_response
-from apps.core.helpers import generate_score
+from django.db.models.functions import Coalesce
+from apps.core.helpers import generate_score, generate_session_id, save_version
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 
 
 @extend_schema(tags=["Modules List API"])
@@ -31,10 +33,14 @@ class ModuleAPIView(generics.ListAPIView):
 
 
 @extend_schema(tags=["Testcase List API"])
-class TestCaseList(generics.ListAPIView):
+class TestCaseList(c.CustomListCreateAPIView):
+
+    def get_queryset(self):
+        queryset = TestCaseModel.objects.select_related('module').values('id', 'name', 'module__name', 'testcase_type',
+                                                                         'priority', 'status')
+        return queryset
 
     pagination_class = CustomPagination
-    queryset = TestCaseModel.objects.all()
     serializer_class = TestcaseListSerializer
 
 
@@ -58,7 +64,12 @@ class TestCaseDetail(generics.RetrieveUpdateDestroyAPIView):
 class FileUploadView(APIView):
 
     def __init__(self, **kwargs):
-        self.response_format = ResponseInfo().response
+        self.response_format = {
+            "status": True,
+            "status_code": status.HTTP_200_OK,
+            "data": {},
+            "message": ""
+        }
         super().__init__(**kwargs)  
 
     serializer_class = FileUploadSerializer
@@ -105,6 +116,61 @@ class TestPlanningView(generics.GenericAPIView):
                     "message": "No Testcase Found for this Criteria"
                 }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TestPlanVersionAPI(generics.GenericAPIView):
+
+    serializer_class = TestplanSessionSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class GetTestVersionAPI(c.CustomGenericAPIView):
+
+    serializer_class = SessionSerializer
+
+    def get_queryset(self):
+        queryset = TestPlanSession.objects.only('id', 'version', 'status').filter(session__session_id=self.kwargs.get('token'))
+        return queryset
+
+
+class VersionDetailAPI(c.CustomGenericAPIView):
+
+    serializer_class = TestplanSessionSerializer
+
+    def get_queryset(self):
+        queryset = TestPlanSession.objects.filter(session__session_id=self.kwargs.get('token'),
+                                                  version=self.kwargs.get('version'))
+        return queryset
+
+    def get(self, requests, *args, **kwargs):
+        response_format = {
+                "status": False,
+                "data": "Error",
+                "message": "Error",
+                "status_code": status.HTTP_400_BAD_REQUEST
+            }
+        try:
+            response = self.get_serializer(self.get_queryset(), many=True)
+            if response.data:
+                if isinstance(response.data, list):
+                    if len(response.data) == 1:
+                        response_format['status'] = True
+                        response_format['data'] = response.data[0]
+                        response_format['status_code'] = status.HTTP_200_OK
+                        response_format['message'] = "Success"
+                        return Response(response_format, status=status.HTTP_200_OK)
+                return Response(response_format, status=status.HTTP_200_OK)
+            else:
+                return Response(response.data, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            response_format['message'] = str(e)
+            return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CreateTestPlanView(generics.GenericAPIView):
@@ -154,6 +220,7 @@ class ClassicOptionAPI(APIView):
 
     def get(self, request, *args, **kwargs):
         # get_functionality = TestCaseModel.objects.values('testcase_type').distinct('testcase_type')
+        get_project = Project.objects.all().values('id', 'name')
         get_priority = [{"id": value, "name": label} for value, label in PriorityChoice.choices]
         response_format = {
             "status": status.HTTP_200_OK,
@@ -163,6 +230,7 @@ class ClassicOptionAPI(APIView):
                     "name": "Functional",
                 }],
                 'priority': get_priority,
+                'project': get_project
             },
             "status_code": status.HTTP_400_BAD_REQUEST,
             "message": "Success",
@@ -172,27 +240,51 @@ class ClassicOptionAPI(APIView):
 
 class TestcaseOptionAPI(generics.GenericAPIView):
 
+    def __init__(self, **kwargs):
+        self.response_format = {
+            "status": True,
+            "data": {},
+            "message": "Success",
+            "status_code": status.HTTP_200_OK
+        }
+        super().__init__(**kwargs)
+
     serializer_class = MetrixSerializer
 
     def get_queryset(self):
-        search = self.request.query_params.get('search', None)
-        if search:
-            search_filers =  Q(testcase__name__icontains=search) | Q(testcase__module__name__icontains=search) | Q(testcase__testcase_type__icontains=search) | Q(testcase__priority__icontains=search)
-            if search.isdigit():
-                search_filers |= Q(testcase__id__exact=search)
-            queryset = TestCaseMetric.objects.select_related('testcase').filter(
-                search_filers
-            ).distinct()
-        else:
-            queryset = []
+        q = self.request.query_params.get('search', None)
+        query = TestCaseMetric.objects.select_related(
+            "testcase", "testcase__module"
+        ).exclude(
+            testcase__id__in=self.request.data.get('testcases', [])
+        )
+        query = query.annotate(
+            max_time=Coalesce(
+                Max('execution_time', output_field=IntegerField()),
+                0
+            )
+        )
+        if q.isdigit():
+            queryset = query.filter(testcase__id=int(q))
+            return queryset
+        queryset = query.annotate(
+            search=SearchVector("testcase__name", "testcase__module__name",
+                                "testcase__testcase_type", "testcase__priority")
+        ).filter(
+            search=SearchQuery(q)
+        ).distinct()
         return queryset
 
-    def get(self, request, *args, **kwargs):
+
+    def post(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         if serializer.data:
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+            self.response_format['data'] = serializer.data
+            return Response(self.response_format, status=status.HTTP_200_OK)
+        self.response_format["status"] = False
+        self.response_format["message"] = "No data Found"
+        return Response(self.response_format, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TestcaseScore(generics.GenericAPIView):
@@ -218,11 +310,12 @@ class AITestPlanningView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             user_msg = serializer.validated_data['user_msg']
-            session_id = serializer.validated_data['session_id']
-
-            response_dict = get_llm_response(user_msg, session_id)
-
-
+            session = serializer.validated_data.get('session_id')
+            if not session or session == "":
+                session = generate_session_id()
+                print('session id', session)
+            response_dict = get_llm_response(user_msg, session)
+            response_dict['session_id'] = session
             return Response(response_dict, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -462,13 +555,3 @@ class HistoryPlanDetailsView(generics.RetrieveAPIView):
                 "message": str(e),
             }
             return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
-
-
-class TestingView(APIView):
-
-    def post(self, request, *args, **kwargs):
-        serializer = TestPlanSerializer(data=request.data)
-        if serializer.is_valid():
-            score = generate_score(request.data)
-            return Response(score, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

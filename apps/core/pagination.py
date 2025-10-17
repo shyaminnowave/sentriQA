@@ -1,6 +1,6 @@
 import math
 from rest_framework.views import Response
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import PageNumberPagination, LimitOffsetPagination
 from collections import OrderedDict
 from rest_framework import status
 
@@ -25,6 +25,17 @@ class CustomPagination(PageNumberPagination):
         ]))
 
 
-class CustomPageNumberPagination(CustomPagination):
+class CustomLimitOffsetPagination(LimitOffsetPagination):
 
-    page_size = 14
+    def get_paginated_response(self, data):
+        response = super(CustomLimitOffsetPagination, self).get_paginated_response(data)
+        return Response({
+            'count': self.count,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'data': data,
+            'status': True,
+            'status_code': status.HTTP_200_OK,
+            'message': 'Success',
+            'page_count': self.get_limit(self.request),
+        })

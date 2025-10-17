@@ -3,7 +3,7 @@ import pandas as pd
 from django.db import transaction
 from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 from openpyxl import load_workbook
-from apps.core.helpers import QueryHelpers
+from apps.core.helpers import QueryHelpers, generate_score
 from apps.core.models import TestCaseModel, TestCaseMetric
 
 
@@ -87,8 +87,6 @@ class DemoExcelFileFactory(ExcelFileFactory):
             return False
 
 
-
-
 class TestcaseImportExcel(ExcelFileFactory):
 
     def __init__(self, file):
@@ -128,40 +126,49 @@ class TestcaseImportExcel(ExcelFileFactory):
             return (failure / total_runs) * 100
         else:
             return 0
+    
+
+    @staticmethod
+    def get_impact_value(value):
+        if value == 'Yes' or 'yes' or value == 0:
+            return 1.0
+        else:
+            return 0.5
 
 
     def import_data(self):
-        try:
+        # try:
             current_module = None
             lst = []
             matrix = []
             for row in self.ws.iter_rows(
                 min_row=2, values_only=True
-            ):  
-                if row[1] is not None:
-                    current_module = QueryHelpers.get_module_instance(row[1])
-                if row[4] != None:
-                    if not QueryHelpers.check_testcase_exists(row[4]):             
+            ):
+                project_inst = QueryHelpers.get_project_by_id(name='nature')
+                current_module = QueryHelpers.get_module_instance(row[1])
+                if row[1]:
+                    if not QueryHelpers.check_testcase_exists(row[4]):
                         _temp = {
-                            "name": row[4],
+                            "name": row[4] if row[4] is not None else "",
                             "priority": self.get_priority(row[7]),
                             "status": "completed",
                             "module": current_module,
+                            "project": project_inst
                         }
                         lst.append(TestCaseModel(**_temp))
-                if row[4] is not None:
+                if row[1] is not None:
                     _matrix = {
                         "testcase": row[4],
                         "likelihood": row[5],
                         "impact": row[6],
-                        "failure_rate": round(self.get_failure_rate(row[10], row[11])),
+                        "failure_rate": self.get_failure_rate(row[10], row[11]),
                         "failure": row[10],
                         "total_runs": row[11],
-                        "direct_impact": row[12],
+                        "direct_impact": self.get_impact_value(row[12]),
                         "defects": row[14],
                         "severity": 0,
                         "feature_size": 0,
-                        "execution_time": row[15]
+                        "execution_time": 0
                     }
                     matrix.append(_matrix)
             if lst:
@@ -169,16 +176,11 @@ class TestcaseImportExcel(ExcelFileFactory):
                 
             for i in range(len(matrix) - 1, -1, -1):
                 if not QueryHelpers.check_matrix_id(matrix[i]['testcase']):
-                    print('inside', matrix[i]['testcase'])
                     matrix[i]['testcase'] = QueryHelpers.get_test_case_instance(matrix[i]['testcase'])
                     matrix[i] = TestCaseMetric(**matrix[i])
-                else:
-                    matrix.pop(i)
-            print('matrix', matrix)
             with transaction.atomic():
                 TestCaseMetric.objects.bulk_create(matrix)
             return True
-        except Exception as e:
-            print('error', e)
-            return False
-
+        # except Exception as e:
+        #     print('error', e)
+        #     return False

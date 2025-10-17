@@ -1,9 +1,12 @@
 import json
+import uuid
+
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 from rest_framework.utils import representation
 from decimal import Decimal
-from apps.core.models import TestCaseModel, Module, TestCaseMetric, TestPlan, TestScore, HistoryTestPlan
+from apps.core.models import TestCaseModel, Module, TestCaseMetric, TestPlan, TestScore, HistoryTestPlan, \
+    TestPlanSession, AISessionStore
 
 
 class ModuleSerializer(serializers.ModelSerializer):
@@ -16,13 +19,13 @@ class ModuleSerializer(serializers.ModelSerializer):
 class TestcaseListSerializer(serializers.Serializer):
 
     name = serializers.CharField(max_length=200)
-    priority = serializers.CharField(max_length=200)
-    module = serializers.CharField(max_length=200)
+    priority = serializers.CharField(source='priority', max_length=200)
+    module = serializers.CharField(source='module__name', max_length=200)
+    testcase_type = serializers.CharField(source='testcase_type', max_length=200)
     status = serializers.CharField(max_length=200)
 
     def to_representation(self, instance):
         represent = super().to_representation(instance)
-        represent['module'] = instance.module.name
         return represent
 
 
@@ -110,7 +113,7 @@ class TestCaseSerializer(serializers.ModelSerializer):
             temp[field] = validated_data.pop(field, None)
         module, instance = Module.objects.get_or_create(name=module)
         instance = TestCaseModel.objects.create(module=module, **validated_data)
-        matrix = TestCaseMetric.objects.create(testcase=instance, **temp)
+        TestCaseMetric.objects.create(testcase=instance, **temp)
         return instance
 
 
@@ -134,12 +137,54 @@ class TestSerializer(serializers.Serializer):
 
 class AITestPlanSerializer(serializers.Serializer):
     user_msg = serializers.CharField(max_length=500)   # new field
-    session_id = serializers.CharField(max_length=200) # new field
+    session_id = serializers.CharField(max_length=200, required=False, allow_blank=True) # new field
 
     def to_representation(self, instance):
         represent = super().to_representation(instance)
         return represent
 
+class SessionSerializer(serializers.Serializer):
+
+    id = serializers.IntegerField()
+    version = serializers.CharField()
+    status = serializers.CharField()
+
+
+class TestplanSessionSerializer(serializers.Serializer):
+
+    session = serializers.CharField(max_length=200)
+    context = serializers.CharField()
+    version = serializers.CharField(max_length=200)
+    name = serializers.CharField()
+    description = serializers.CharField()
+    modules = serializers.ListSerializer(child=serializers.CharField(max_length=255), max_length=255)
+    output_counts = serializers.IntegerField()
+    testcase_data = serializers.JSONField(write_only=True)
+    status = serializers.CharField(max_length=200, required=False)
+
+    def get_prev_version(self, session):
+        instance = TestPlanSession.objects.filter(session=session).order_by('-created').first()
+        if instance:
+            setattr(instance, 'status', 'draft')
+            instance.save()
+        return None
+
+    def create(self, validated_data):
+        session = validated_data.pop('session')
+        modules = validated_data.pop('modules')
+        get_modules = Module.objects.filter(name__in=modules)
+        get_session = AISessionStore.objects.get(session_id=session)
+        if get_session:
+            self.get_prev_version(get_session)
+            instance = TestPlanSession.objects.create(session=get_session, status='saved', **validated_data)
+            instance.modules.set(get_modules)
+            return instance
+        return False
+
+    def to_representation(self, instance):
+        response = super().to_representation(instance)
+        response['testcases'] = instance.testcase_data
+        return response
 
 class CreateTestPlanSerializer(serializers.Serializer):
 
@@ -211,8 +256,7 @@ class TestPlanSerializer(serializers.Serializer):
 
 class TestScoreSerializer(serializers.Serializer):
 
-    id = serializers.IntegerField(read_only=True)
-    testcase = serializers.CharField(max_length=200, source='testcase.name')
+    id = serializers.CharField(max_length=200, source='testcase.name')
     # Fixed: Removed ListSerializer since module is a single ForeignKey
     # module = serializers.CharField(max_length=200, source='testcase.module.name')
     mode = serializers.CharField(max_length=200, default='ai', read_only=True)
@@ -401,10 +445,11 @@ class MetrixSerializer(serializers.ModelSerializer):
     modules = serializers.CharField(source='testcase.module.name', read_only=True)
     priority = serializers.CharField(source='testcase.priority', read_only=True)
     testscore = serializers.CharField(source='get_test_scores', read_only=True)
+    testcases = serializers.ListField(child=serializers.DecimalField(max_digits=10, decimal_places=6), write_only=True)
 
     class Meta:
         model = TestCaseMetric
-        fields = ('id', 'testcase', 'testscore', 'modules', 'priority')
+        fields = ('id', 'testcase', 'testcases', 'testscore', 'modules', 'priority')
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
@@ -456,6 +501,7 @@ class TestCaseScoreSerializer(serializers.Serializer):
 class SearchSerializer(serializers.Serializer):
 
     query = serializers.CharField()
+
 
 
 class HistroryPlanDetailsSerializer(serializers.ModelSerializer):

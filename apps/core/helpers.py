@@ -1,9 +1,13 @@
+import uuid
+from jsonschema import ValidationError
 from rest_framework.generics import get_object_or_404
 from django.http import Http404
-from apps.core.models import TestCaseModel, Module, TestCaseMetric
+from apps.core.models import TestCaseModel, Module, TestCaseMetric, Project, AISessionStore, TestPlanSession
 from django.db.models import Q
+from django.utils.crypto import get_random_string
 from apps.core.testscore import TestCaseScore
 from rest_framework import status
+from .datacls import Session
 
 
 class QueryHelpers:
@@ -19,6 +23,11 @@ class QueryHelpers:
     @staticmethod
     def get_module_instance(name):
         instance, created = Module.objects.get_or_create(name=name)
+        return instance
+
+    @staticmethod
+    def get_project_by_id(name: str):
+        instance, created = Project.objects.get_or_create(name='nature')
         return instance
 
     @staticmethod
@@ -50,16 +59,37 @@ class QueryHelpers:
                 TestCaseMetric,
                 Q(testcase__name=testcase)
             )
-            return True if instance else False
+            return instance if instance else False
+        except Http404 as err:
+            return False
+        except Exception as e:
+            return False
+        
+    @staticmethod
+    def get_project_inst(name):
+        try:
+            instance = get_object_or_404(
+                Project, name=name
+            )
+            return instance
         except Http404 as err:
             return False
         except Exception as e:
             return False
 
 
+def generate_session_id():
+    try:
+        instance = AISessionStore.objects.create()
+        return instance.session_id
+    except Exception as e:
+        print(str(e))
+        return False
+
+
 def generate_score(data):
     queryset = TestCaseMetric.objects.filter(
-                Q(testcase__module__in=data.get('module'))  &
+                Q(testcase__module__id__in=data.get('module'))  &
                 Q(testcase__testcase_type='functional')
             )
     module__name = Module.objects.filter(
@@ -90,6 +120,7 @@ def generate_score(data):
             "modules": list(module__name),
             "output_counts": data.get('output_counts'),
             "priority": data.get('priority', 0),
+            "project": data.get('project'),
             "generate_test_count": len(results) if results else "No testcase found for this Criteria",
             "testcase_type": data.get('testcase_type', "functional"),
             "testcases": results,
@@ -101,3 +132,39 @@ def generate_score(data):
         "message": "success",
     }
     return response_format
+
+
+def get_prev_version(session):
+    try:
+        instance = TestPlanSession.objects.filter(session=session).order_by('-created').first()
+        if instance:
+            setattr(instance, 'status', 'draft')
+            instance.save()
+        return None
+    except Exception as e:
+        return None
+
+
+def save_version(data):
+    try:
+        session_data = Session(**data)
+        data = session_data.model_dump()
+    except Exception as e:
+        print(str(e))
+    session = data.pop('session')
+    modules = data.pop('modules')
+    status = data.pop('status') if data.pop('status') else 'saved'
+    print('status', status)
+
+    get_modules = Module.objects.filter(name__in=modules)
+
+    try:
+        get_session = AISessionStore.objects.get(session_id=session)
+    except AISessionStore.DoesNotExist:
+        return False
+    if get_session:
+        get_prev_version(get_session)
+        instance = TestPlanSession.objects.create(session=get_session, status=status, **data)
+        instance.modules.set(get_modules)
+        return instance
+    return False

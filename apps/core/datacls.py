@@ -1,5 +1,6 @@
+import uuid
 from decimal import Decimal
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, List
 from pydantic import BaseModel, Field
 
 
@@ -32,3 +33,36 @@ class TestCaseScoreResult(BaseModel):
             'module': self.module,
             'priority': self.priority,
         }
+
+class TestPlanInput(BaseModel):
+
+    name: str
+    description: str
+    output_counts: str
+    module_names: Optional[List[str]]
+    priority: str
+    project: str = None
+
+
+class TestcaseData(BaseModel):
+
+    id: int
+    testcase: str
+    modules: str
+    mode: str
+    generated: bool
+    priority: str
+    testscore: float
+
+
+class Session(BaseModel):
+
+    session: uuid.UUID
+    context: str
+    version: str
+    name: str
+    description: str
+    modules: List[str]
+    output_counts: int
+    testcase_data: List[TestcaseData] = Field(default_factory=list)
+    status: Optional[str] = None
