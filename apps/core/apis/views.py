@@ -316,6 +316,9 @@ class AITestPlanningView(generics.GenericAPIView):
                 print('session id', session)
             response_dict = get_llm_response(user_msg, session)
             response_dict['session_id'] = session
+            if response_dict['tcs_data']:
+                response_dict['chat_generated'] = True
+            print(response_dict)
             return Response(response_dict, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

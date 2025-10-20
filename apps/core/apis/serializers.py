@@ -18,10 +18,11 @@ class ModuleSerializer(serializers.ModelSerializer):
 
 class TestcaseListSerializer(serializers.Serializer):
 
+    id = serializers.IntegerField()
     name = serializers.CharField(max_length=200)
-    priority = serializers.CharField(source='priority', max_length=200)
+    priority = serializers.CharField(max_length=200)
     module = serializers.CharField(source='module__name', max_length=200)
-    testcase_type = serializers.CharField(source='testcase_type', max_length=200)
+    testcase_type = serializers.CharField(max_length=200)
     status = serializers.CharField(max_length=200)
 
     def to_representation(self, instance):

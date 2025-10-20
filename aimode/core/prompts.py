@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 def get_sql_table_names(conn):
     query = """
-        SELECT tablename
+        SELECT schemaname || '.' || tablename AS tablename
         FROM pg_catalog.pg_tables
         WHERE schemaname='core';
     """
@@ -24,7 +24,7 @@ def get_sql_table_names(conn):
 def get_all_table_columns(conn) -> Dict[str, List[str]]:
     query = """
         SELECT
-            c.table_name,
+            c.table_schema || '.' || c.table_name AS table_name,   -- ✅ added schema prefix
             array_agg(c.column_name ORDER BY c.ordinal_position) AS columns
         FROM
             information_schema.tables t
@@ -36,14 +36,12 @@ def get_all_table_columns(conn) -> Dict[str, List[str]]:
             t.table_schema = 'core'
             AND t.table_type   = 'BASE TABLE'
         GROUP BY
-            c.table_name;
+            c.table_schema, c.table_name;
     """
     with conn.cursor() as cur:
         cur.execute(query)
-        # Returns List[(table_name, [col1, col2, …]), …]
         rows = cur.fetchall()
 
-    # Convert to dict: { 'table1': ['colA','colB'], … }
     return {table: cols for table, cols in rows}
 
 
@@ -66,25 +64,19 @@ SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient
             2. ONLY use tables and columns that are listed above
             3. If you need to query about sellers, look for a table that might contain seller information
             4. If you're unsure about which table to use, ask for clarification
-            5. ALWAYS use ONLY tables from `core` schema. **Include the schema in the query** (e.g., core.core_module).
     """
 
 
 def build_sql_generation_prompt(conn, user_query) -> str:
-    """Builds a SQL Query generation prompt by injecting database tables and their descriptions into a template.
-
-    Args:
-        conn: Database Connection Object.
-    Returns:
-        A string containing the formatted SQL Query generation prompt.
-    """
-
     table_names = get_sql_table_names(conn)
     table_descriptions = get_all_table_columns(conn)
 
     prompt = SQL_QUERY_GENERATION_BASE_PROMPT
-    return Template(prompt).substitute(table_names=table_names, table_descriptions=table_descriptions,
-                                       user_query=user_query)
+    return Template(prompt).substitute(
+        table_names=table_names,
+        table_descriptions=table_descriptions,
+        user_query=user_query
+    )
 
 
 table_columns = ", ".join(
@@ -98,7 +90,7 @@ module_names = db.execute("SELECT DISTINCT cm.name FROM core.core_module AS cm")
 module_priorities = db.execute("SELECT DISTINCT ct.priority FROM core.core_testcasemodel AS ct")
 
 AGENT_PROMPT_TEXT = f"""
-You are a helpful assistant with access to three tools: `sql_query_generator`, `execute_sql_query` and `generate_testplan`.
+You are a helpful assistant with access to three tools: `sql_query_generator`, `execute_sql_query`, and `generate_testplan`.
 
 You have access to:
 - Table names: {table_names}
@@ -109,18 +101,46 @@ When the user asks to generate a **test plan** or **test case**:
 2. A valid test plan requires these three parameters: `module_name`, `priority`, and `output_counts`.
 3. If `module_name` is missing, suggest 3-4 options from: {module_names}.
     **Important:** These values must match **exactly** (case and format) when used for test case generation.
-4. If `priority` is missing, suggest 3-4 options from: {module_priorities}.
+4. **Automatically detect the `priority` from the user query if it mentions classes like Class 1, Class 2, Class 3, or similar terms.**
+    - Do not ask the user if the class is already mentioned in the query.
+    - Map natural language mentions to exact system format: `Class 1 -> class_1`, `Class 2 -> class_2`, `Class 3 -> class_3` etc.
+5. If `priority` is still missing, suggest 3-4 options from: {module_priorities}.
     **Important:** These values must match **exactly** (case and format) when used for test case generation.
-5. If `output_counts` is missing, suggest one of [2, 4, 5, 10, 20, 30, 40, 50] (or let the user specify a custom value).
-6. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
-7. Automatically generate a `name` and `description` for the test plan.
-8. ALWAYS use ONLY tables from `core` schema to generate SQL query (e.g., WHERE table_schema = 'core';). 
+6. If `output_counts` is missing, suggest one of [2, 4, 5, 10] (or let the user specify a custom value).
+7. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
+8. Automatically generate a `name` and `description` for the test plan.
 """
 
 AGENT_PROMPT = ChatPromptTemplate.from_messages([
     ("system", AGENT_PROMPT_TEXT.strip()),
     ("placeholder", "{messages}"),
 ])
+
+
+CHANGE_DETECTION_PROMPT_TEXT = f"""
+You are an intelligent assistant that understands user queries for generating test plans.
+You have access to the following system context:
+{AGENT_PROMPT_TEXT}
+
+Your task:
+Compare two user queries and determine if the second one is **substantially different** from the first one.
+
+Think based on their meaning, not just words — 
+consider the user’s intent, focus, and purpose behind each query.
+
+Return strictly one of these answers:
+- "YES" → The second query represents a major change.
+- "NO" → The second query is similar or a continuation/refinement.
+
+Queries to compare:
+Query 1 (previous): {{last_query}}
+Query 2 (current): {{current_query}}
+"""
+
+CHANGE_DETECTION_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", CHANGE_DETECTION_PROMPT_TEXT)
+])
+
 
 SUGGESTION_LLM_PROMPT_TEXT = """\
 You are an expert in Structuring Data. \
@@ -137,3 +157,30 @@ SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(
         ("human", "Structure the following LLM response:\n\n{content}"),
     ]
 )
+
+# # ------------------------------
+# # New prompt to handle shortfall in generated testcases
+# # ------------------------------
+# LLM_TESTPLAN_FEEDBACK_PROMPT_TEXT = """\
+# You are an expert test plan assistant.
+
+# The user requested {requested_count} test cases for the following modules and priorities:
+# Modules: {modules}
+# Priorities: {priorities}
+
+# You have generated {generated_count} test cases.
+
+# Instructions:
+# 1. If the number of generated test cases ({generated_count}) is less than requested ({requested_count}), inform the user clearly.
+# 2. Suggest possible options to get more test cases, such as:
+#    - Adding more modules, give some modules names
+#    - Including other priorities
+#    - Adjusting output_counts or constraints, give more options to add number of output
+# 3. Suggest these options as a list in 'suggestions'
+# 4. Keep your suggestions concise and actionable.
+# 5. Do not generate actual test cases here, only provide feedback and recommendations.
+# """
+
+# FEEDBACK_PROMPT = ChatPromptTemplate.from_messages([
+#     ("system", LLM_TESTPLAN_FEEDBACK_PROMPT_TEXT)
+# ])
