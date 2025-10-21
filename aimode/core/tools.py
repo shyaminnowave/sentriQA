@@ -162,6 +162,9 @@ def generate_testplan(
 
         should_save = True
         save_reason = "New test plan generated"
+        # Log user_prompt for debugging
+        
+        logger.info(f"[generate_testplan] user_prompt received: {user_prompt}")
         if user_prompt:
             should_save = change_detector.should_save_version(user_prompt, session_id)
             if should_save:
@@ -186,6 +189,9 @@ def generate_testplan(
             }
             save_version(save_data)
             logger.success(f"Saved test plan version {next_version} to database - {save_reason}")
+            # Add version information to the response so it can be shown in chatbot
+            tcs_data["version_saved"] = next_version
+            tcs_data["version_message"] = f"This has been saved as version {next_version}"
         else:
             logger.info(f"Skipped saving test plan to database - {save_reason}")
 

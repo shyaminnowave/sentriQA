@@ -8,11 +8,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from apps.core.models import TestCaseMetric, TestCaseModel, Module, TestPlan, PriorityChoice, HistoryTestPlan, Project, TestPlanSession
 from apps.core.utils import TestcaseImportExcel, DemoExcelFileFactory
-from apps.core.apis.serializers import TestcaseListSerializer, TestCaseSerializer, FileUploadSerializer, \
+from apps.core.apis.serializers import TestcaseListSerializer, CreateTestCaseSerializer, FileUploadSerializer, \
     TestMetrixSerializer, TestSerializer, ModuleSerializer, TestPlanSerializer, TestScoreSerializer, \
     TestCaseNameSerializer, CreateTestPlanSerializer, TestPlanningSerializer, PlanSerializer, TestCaseOptionSerializer, \
     TestCaseScoreSerializer, SearchSerializer, PlanHistorySerializer, MetrixSerializer, HistroryPlanDetailsSerializer, \
-    TestplanSessionSerializer, SessionSerializer
+    TestplanSessionSerializer, SessionSerializer, TestCaseSerializer
 from apps.core.utils import QueryHelpers
 from django.db.models import Q, Max, DecimalField, IntegerField
 from drf_spectacular.utils import extend_schema
@@ -45,19 +45,29 @@ class TestCaseList(c.CustomListCreateAPIView):
 
 
 @extend_schema(tags=["Testcase Create API"])
-class TestCaseView(generics.CreateAPIView):
+class TestCaseView(c.CustomCreateAPIView):
 
     serializer_class = TestCaseSerializer
 
 
 @extend_schema(tags=["Testcase Detail API"])
-class TestCaseDetail(generics.RetrieveUpdateDestroyAPIView):
+class TestCaseDetail(c.CustomRetrieveUpdateDestroyAPIView):
 
     serializer_class = TestCaseSerializer
 
     def get_object(self):
-        queryset = TestCaseModel.objects.get(slug=self.kwargs['slug']).select_related('testcase')
+        queryset = TestCaseModel.objects.select_related('module', 'project').prefetch_related('metrics').get(pk=self.kwargs['pk'])
         return queryset
+
+
+class SearchAPIView(generics.ListAPIView):
+
+    def get_queryset(self):
+        queryset = TestCaseModel.objects.select_related('module', 'project')
+        return queryset
+
+    pagination_class = CustomPagination
+    serializer_class = TestCaseSerializer
 
 
 @extend_schema(tags=["Testcase Excel Upload API"])

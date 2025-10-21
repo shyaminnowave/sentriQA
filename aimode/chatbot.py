@@ -65,4 +65,12 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
 
     logger.info(f"[chatbot.py] Final tcs_data: {content_dict['tcs_data']}")
 
+    # Check if a version was saved and append the message to the content
+    if content_dict["tcs_data"] and isinstance(content_dict["tcs_data"], dict):
+        version_message = content_dict["tcs_data"].get("version_message")
+        if version_message:
+            content_dict["content"] += f"\n\n{version_message}"
+
     return content_dict
+
+

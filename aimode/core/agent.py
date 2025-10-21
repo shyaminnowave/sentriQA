@@ -46,13 +46,7 @@ def chatbot(state: AgentState):
     # Set session_id for tools globally
     set_current_session_id(session_id)
     logger.info(f"[agent.py] session_id set for tools: {session_id}")
-
-    llm_input = {
-        "messages": messages,
-        "user_prompt": user_prompt
-    }
-
-    response = llm_with_tools.invoke(llm_input)
+    response = llm_with_tools.invoke({"messages": messages})
     content_to_structure = response.content if hasattr(response, 'content') else str(response)
 
     chain = SUGGESTION_LLM_PROMPT | llm.with_structured_output(

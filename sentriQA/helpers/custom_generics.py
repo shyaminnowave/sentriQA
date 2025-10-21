@@ -44,7 +44,7 @@ class CustomListCreateAPIView(mixins.ListModelMixin,
             default_error = {key: value[0] if isinstance(value, list) else value for key, value in err.detail.items()}
             return handler._error_response(data=default_error)
         except Exception as e:
-            return handler._error_response(error={"error": str(e)})
+            return handler._error_response(error=str(e))
         
     def post(self, request, *args, **kwargs):
         handler = ResponseInfo()
@@ -53,12 +53,12 @@ class CustomListCreateAPIView(mixins.ListModelMixin,
             if response.data:
                 return handler._success_response(data=response.data, message="Created Successful")
             else:
-                return handler._error_response(data=response.error)    
+                return handler._error_response(error=response.error)
         except serializers.ValidationError as err:
             default_error = {key: value[0] if isinstance(value, list) else value for key, value in err.detail.items()}
-            return handler._error_response(data=default_error)
+            return handler._error_response(error=default_error)
         except Exception as e:
-            return handler._error_response(data={"error": str(e)})
+            return handler._error_response(error={"error": str(e)})
 
 
 class CustomCreateAPIView(mixins.CreateModelMixin, GenericAPIView):
@@ -66,16 +66,18 @@ class CustomCreateAPIView(mixins.CreateModelMixin, GenericAPIView):
     def post(self, request, *args, **kwargs):
         handler = ResponseInfo()
         try:
+            print('inside')
             response = super().create(request, *args, **kwargs)
+            print('response', response)
             if response.data:
                 return handler._success_response(data=response.data, message="Created Successful")
             else:
                 return handler._error_response(data=response.error)    
         except serializers.ValidationError as err:
             default_error = {key: value[0] if isinstance(value, list) else value for key, value in err.detail.items()}
-            return handler._error_response(data=default_error)
+            return handler._error_response(error=default_error)
         except Exception as e:
-            return handler._error_response(data={"error": str(e)})
+            return handler._error_response(error={"error": str(e)})
 
 
 class CustomRetriveAPIVIew(mixins.RetrieveModelMixin, GenericAPIView): 
@@ -226,29 +228,31 @@ class CustomRetrieveUpdateDestroyAPIView(mixins.RetrieveModelMixin, mixins.Updat
         handler = ResponseInfo()
         try:
             response = super().retrieve(request, *args, **kwargs)
-            if response.status_code == status.HTTP_204_NO_CONTENT:
-                return handler._success_response(data=response.data, message="Created Successful")
+            if response.status_code == status.HTTP_200_OK:
+                return handler._success_response(data=response.data, message="Fetched Successful")
             else:
-                return handler._error_response(data=response.error)    
+                return handler._error_response(error="Error")
         except serializers.ValidationError as err:
             default_error = {key: value[0] if isinstance(value, list) else value for key, value in err.detail.items()}
-            return handler._error_response(data=default_error)
+            return handler._error_response(error=default_error)
         except Exception as e:
-            return handler._error_response(data={"error": str(e)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handler._error_response(error=str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def put(self, request, *args, **kwargs):
         handler = ResponseInfo()
         try:
+            print('inside')
             response = self.update(request, *args, **kwargs)
+            print(response.data)
             if response.data:
                 return handler._success_response(data=response.data, message="Created Successful")
             else:
-                return handler._error_response(data=response.error)    
+                return handler._error_response(error=response.error)
         except serializers.ValidationError as err:
             default_error = {key: value[0] if isinstance(value, list) else value for key, value in err.detail.items()}
-            return handler._error_response(data=default_error)
+            return handler._error_response(error=default_error)
         except Exception as e:
-            return handler._error_response(data={"error": str(e)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handler._error_response(error=str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def patch(self, request, *args, **kwargs):
         handler = ResponseInfo()
@@ -257,12 +261,12 @@ class CustomRetrieveUpdateDestroyAPIView(mixins.RetrieveModelMixin, mixins.Updat
             if response.data:
                 return handler._success_response(data=response.data, message="Created Successful")
             else:
-                return handler._error_response(data=response.error)    
+                return handler._error_response(error=response.error)
         except serializers.ValidationError as err:
             default_error = {key: value[0] if isinstance(value, list) else value for key, value in err.detail.items()}
-            return handler._error_response(data=default_error)
+            return handler._error_response(error=default_error)
         except Exception as e:
-            return handler._error_response(data={"error": str(e)}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return handler._error_response(error=str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     def delete(self, request, *args, **kwargs):
         handler = ResponseInfo()

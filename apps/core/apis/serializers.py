@@ -30,9 +30,53 @@ class TestcaseListSerializer(serializers.Serializer):
         return represent
 
 
+class TestcaseMetrixSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = TestCaseMetric
+        exclude = ('created', 'modified', 'testcase')
+
+
 class TestCaseSerializer(serializers.ModelSerializer):
 
-    module = serializers.CharField(required=True, max_length=100)
+    metrics = TestcaseMetrixSerializer(many=True)
+
+    class Meta:
+        model = TestCaseModel
+        fields = '__all__'
+
+    def create(self, validated_data):
+        metrics_data = validated_data.pop('metrics', [])
+        instance = TestCaseModel.objects.create(**validated_data)
+        if instance:
+            for metric_data in metrics_data:
+                TestCaseMetric.objects.create(testcase=instance, **metric_data)
+        return instance
+
+    def update(self, instance, validated_data):
+        metrics_data = validated_data.pop('metrics', [])
+        print(metrics_data)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if metrics_data is not None:
+            for metric_data in metrics_data:
+                TestCaseMetric.objects.filter(testcase=instance).update(**metric_data)
+        return instance
+
+    def to_representation(self, instance):
+        repo = super().to_representation(instance)
+        repo['module'] = instance.module.name
+        repo['project'] = instance.project.name
+        return repo
+
+class CreateTestCaseSerializer(serializers.ModelSerializer):
+
+    module = serializers.ListSerializer(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False
+    )
     likelihood = serializers.IntegerField(
         required=True,
         min_value=1,

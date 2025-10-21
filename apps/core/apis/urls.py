@@ -2,21 +2,42 @@ from django.urls import path
 from apps.core.apis import views
 
 urlpatterns = [
+
+    # TestcaseRepo APIs
     path('', views.TestCaseList.as_view(), name='testcase-list'),
+    path('testcase', views.TestCaseView.as_view(), name='testcase'),
+    path('testcase/<int:pk>', views.TestCaseDetail.as_view(), name='testcase-detail'),
+
+    # module API
     path('module/', views.ModuleAPIView.as_view(), name='module-list'),
-    path('testcases', views.TestCaseView.as_view(), name='testcase'),
+
+    # Option DropDown APIs
     path('classic-options', views.ClassicOptionAPI.as_view(), name='classic-option-list'),
     path('testcase-options', views.TestcaseOptionAPI.as_view(), name='search-list'),
-    path('testcase/<int:pk>', views.TestCaseDetail.as_view(), name='testcase-detail'),
-    path('file-upload', views.FileUploadView.as_view(), name='file-upload'),
+
+    # Search
+
+    # TestPlan APIs
     path('test-plan', views.TestPlanningView.as_view(), name='test-plan'),
+
+    # Session API
     path('session/save', views.TestPlanVersionAPI.as_view(), name='test-plan-version'),
+
+    # Version APIs
     path('version/<str:token>', views.GetTestVersionAPI.as_view(), name='version'),
     path('version/<str:token>/<str:version>', views.VersionDetailAPI.as_view(), name='version'),
+
+    # Testplan APIs
+    path('test-plan', views.TestPlanningView.as_view(), name='test-plan'),
     path('create-testplan', views.CreateTestPlanView.as_view(), name='create-testplan'),
-    path('ai-test-plan', views.AITestPlanningView.as_view(), name='ai-test-plan'), ############
     path('get-plans', views.TestPlanView.as_view(), name='get-plans'),
     path('plan/<int:id>', views.PlanDetailsView.as_view(), name='plan-detail'),
+
+    # AI TestPlanCreate API
+    path('ai-test-plan', views.AITestPlanningView.as_view(), name='ai-test-plan'),
+
+    # Utils APIs
+    path('file-upload', views.FileUploadView.as_view(), name='file-upload'),
     path('test-scores', views.TestScores.as_view(), name='test-scores'),
     path('get-excel', views.TestScoreExcel.as_view(), name='get-excel'),
     path('convert', views.ConvertAPIView.as_view(), name='convert'),
