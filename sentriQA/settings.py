@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = True if os.environ.get("DEBUG") == 'True' else False
 
 ALLOWED_HOSTS = [os.environ.get("ALLOWED_HOSTS")]
 
@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
 
     # third-party APPS
     'corsheaders',
@@ -50,6 +51,8 @@ INSTALLED_APPS = [
     'import_export',
     'drf_spectacular',
     'solo',
+    'django_filters',
+    'debug_toolbar',
 
     # local apps
     'apps.core',
@@ -67,6 +70,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
 ]
 
 ROOT_URLCONF = "sentriQA.urls"
@@ -120,6 +124,7 @@ DATABASES = {
 
 DATABASE_ROUTERS = ['sentriQA.routers.DatabaseRouter']
 
+
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -140,6 +145,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_FILTER_BACKENDS': (
+        'django_filters.rest_framework.DjangoFilterBackend',
+    ),
 }
 
 SPECTACULAR_SETTINGS = {
@@ -150,6 +158,12 @@ SPECTACULAR_SETTINGS = {
     # OTHER SETTINGS
 }
 
+
+INTERNAL_IPS = [
+    # ...
+    "127.0.0.1",
+    # ...
+]
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/

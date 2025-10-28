@@ -14,7 +14,6 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
     logger.info(f"[chatbot.py] get_llm_response called with session_id={session_id}, query={query}")
 
     config = {"configurable": {"thread_id": session_id}}
-
     # Pass the user prompt and session_id in the state
     state = {
         "messages": [HumanMessage(content=query)],
@@ -25,8 +24,6 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
 
     messages = graph.invoke(state, config=config)
     msgs = messages["messages"]
-    logger.info(f"[chatbot.py] Graph returned {len(msgs)} messages")
-
     last_human_index = max((i for i, m in enumerate(msgs) if isinstance(m, HumanMessage)), default=-1)
     last_after_human = msgs[last_human_index + 1:] if last_human_index >= 0 else []
 
@@ -35,9 +32,9 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
         "tcs_data": {},
         "suggestions": [],
     }
-
     for msg in last_after_human:
         if isinstance(msg, ToolMessage) and msg.name == "generate_testplan":
+            logger.info("[chatbot.py] Received tool output from generate_testplan (hidden from user).")
             raw_content = msg.content.strip()
             if "error" not in raw_content.lower():
                 try:
@@ -50,6 +47,35 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
                     content_dict["tcs_data"] = {}
             else:
                 content_dict["tcs_data"] = {}
+            #Handle messages for user
+            if isinstance(content_dict["tcs_data"], dict) and "data" in content_dict["tcs_data"]:
+                tcs_info = content_dict["tcs_data"]["data"]
+                tcs_list = tcs_info.get("testcases", [])
+                requested_count = tcs_info.get("output_counts", 0)
+                version_message = tcs_info.get("version_message")
+                logger.info(f"version message : {version_message}")
+                if len(tcs_list) == 0:
+                    # Guard against empty generation
+                    content_dict["content"] = "No matching test cases found. Please refine your parameters."
+                    break
+                elif requested_count > len(tcs_list):
+                    # Missing or low-count case detection
+                    content_dict["content"] = (
+                        f"Only {len(tcs_list)} matching test cases were found based on your criteria. "
+                        "Would you like to adjust the filters and continue?\n"
+                    )
+                    content_dict["suggestions"] = ["Modify Parameters"]
+                else:
+                    # Normal success
+                    content_dict["content"] = "Test plan generated successfully. You can view all test cases in the left panel.\n"
+
+                # Append version message if available
+                if version_message:
+                    content_dict["content"] += f"\n{version_message}"
+            else:
+                # Fallback for unexpected content
+                content_dict["content"] = "Test plan generated successfully."
+
             break
 
     if not content_dict["tcs_data"]:
@@ -65,12 +91,4 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
 
     logger.info(f"[chatbot.py] Final tcs_data: {content_dict['tcs_data']}")
 
-    # Check if a version was saved and append the message to the content
-    if content_dict["tcs_data"] and isinstance(content_dict["tcs_data"], dict):
-        version_message = content_dict["tcs_data"].get("version_message")
-        if version_message:
-            content_dict["content"] += f"\n\n{version_message}"
-
     return content_dict
-
-

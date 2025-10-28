@@ -135,9 +135,8 @@ class TestcaseImportExcel(ExcelFileFactory):
         else:
             return 0.5
 
-
     def import_data(self):
-        # try:
+        try:
             current_module = None
             lst = []
             matrix = []
@@ -181,6 +180,6 @@ class TestcaseImportExcel(ExcelFileFactory):
             with transaction.atomic():
                 TestCaseMetric.objects.bulk_create(matrix)
             return True
-        # except Exception as e:
-        #     print('error', e)
-        #     return False
+        except Exception as e:
+            print('error', e)
+            return False

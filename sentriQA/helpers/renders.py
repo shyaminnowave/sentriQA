@@ -6,16 +6,19 @@ from rest_framework.response import Response
 
 class ResponseInfo:
 
-    def __init__(self, user=None, **args) -> None:
-        self.response = {
-            "status": args.get('status', True),
-            "status_code": args.get('status_code', ''),
-            "data": args.get('data', {}),
-            "message": args.get('message', '')
-        }
-
     @staticmethod
-    def _success_response(data: Any, message: str = "Success", status_code: int = status.HTTP_200_OK) -> Response:
+    def success_response(data: Any, message: str = "Success", status_code: int = status.HTTP_200_OK) -> Response:
+        """
+        Create a standardized success response.
+
+        Args:
+            data: Response payload
+            message: Human-readable success message
+            status_code: HTTP status code
+
+        Returns:
+            Response object with standardized structure
+        """
         response = {
             "status": True,
             "data": data,
@@ -25,7 +28,18 @@ class ResponseInfo:
         return Response(response, status=status_code)
     
     @staticmethod
-    def _error_response(error: Any, message: str = "Error", status_code: int = status.HTTP_400_BAD_REQUEST) -> Response:
+    def error_response(error: Any, message: str = "Error", status_code: int = status.HTTP_400_BAD_REQUEST) -> Response:
+        """
+        Create a standardized error response.
+
+        Args:
+            message: Human-readable error message
+            error: Detailed error information (validation errors, etc.)
+            status_code: HTTP status code
+
+        Returns:
+            Response object with standardized error structure
+        """
         response = {
             "status": False,
             "data": error,

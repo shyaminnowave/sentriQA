@@ -16,6 +16,7 @@ urlpatterns = [
     path('testcase-options', views.TestcaseOptionAPI.as_view(), name='search-list'),
 
     # Search
+    path('search', views.SearchAPIView.as_view(), name='search-list'),
 
     # TestPlan APIs
     path('test-plan', views.TestPlanningView.as_view(), name='test-plan'),
@@ -41,6 +42,6 @@ urlpatterns = [
     path('test-scores', views.TestScores.as_view(), name='test-scores'),
     path('get-excel', views.TestScoreExcel.as_view(), name='get-excel'),
     path('convert', views.ConvertAPIView.as_view(), name='convert'),
-    path('plan-history/<int:id>', views.TestPlanHistroryView.as_view(), name='plan-history'),
+    path('plan-history/<int:id>', views.TestPlanHistoryView.as_view(), name='plan-history'),
     path('plan-history/<int:id>/<int:history_id>', views.HistoryPlanDetailsView.as_view(), name='plan-history'),
 ]

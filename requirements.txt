@@ -49,3 +49,4 @@ gunicorn==20.1.0
 whitenoise
 django-solo
 django-debug-toolbar
+django-filter

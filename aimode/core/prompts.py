@@ -11,6 +11,7 @@ def get_sql_table_names(conn):
         FROM pg_catalog.pg_tables
         WHERE schemaname='core';
     """
+    logger.info(f"Connection type: {type(conn)}")
     try:
         with conn.cursor() as cur:
             cur.execute(query)
@@ -157,30 +158,3 @@ SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(
         ("human", "Structure the following LLM response:\n\n{content}"),
     ]
 )
-
-# # ------------------------------
-# # New prompt to handle shortfall in generated testcases
-# # ------------------------------
-# LLM_TESTPLAN_FEEDBACK_PROMPT_TEXT = """\
-# You are an expert test plan assistant.
-
-# The user requested {requested_count} test cases for the following modules and priorities:
-# Modules: {modules}
-# Priorities: {priorities}
-
-# You have generated {generated_count} test cases.
-
-# Instructions:
-# 1. If the number of generated test cases ({generated_count}) is less than requested ({requested_count}), inform the user clearly.
-# 2. Suggest possible options to get more test cases, such as:
-#    - Adding more modules, give some modules names
-#    - Including other priorities
-#    - Adjusting output_counts or constraints, give more options to add number of output
-# 3. Suggest these options as a list in 'suggestions'
-# 4. Keep your suggestions concise and actionable.
-# 5. Do not generate actual test cases here, only provide feedback and recommendations.
-# """
-
-# FEEDBACK_PROMPT = ChatPromptTemplate.from_messages([
-#     ("system", LLM_TESTPLAN_FEEDBACK_PROMPT_TEXT)
-# ])

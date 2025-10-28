@@ -1,12 +1,9 @@
 import json
-import uuid
-
-from django.shortcuts import get_object_or_404
 from rest_framework import serializers
-from rest_framework.utils import representation
-from decimal import Decimal
+from pathlib import Path
 from apps.core.models import TestCaseModel, Module, TestCaseMetric, TestPlan, TestScore, HistoryTestPlan, \
     TestPlanSession, AISessionStore
+from apps.core.helpers import get_priority_repr
 
 
 class ModuleSerializer(serializers.ModelSerializer):
@@ -18,16 +15,12 @@ class ModuleSerializer(serializers.ModelSerializer):
 
 class TestcaseListSerializer(serializers.Serializer):
 
-    id = serializers.IntegerField()
-    name = serializers.CharField(max_length=200)
-    priority = serializers.CharField(max_length=200)
-    module = serializers.CharField(source='module__name', max_length=200)
-    testcase_type = serializers.CharField(max_length=200)
-    status = serializers.CharField(max_length=200)
-
-    def to_representation(self, instance):
-        represent = super().to_representation(instance)
-        return represent
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(max_length=200, read_only=True)
+    priority = serializers.CharField(max_length=200, read_only=True)
+    module = serializers.CharField(source='module__name', max_length=200, read_only=True)
+    testcase_type = serializers.CharField(max_length=200, read_only=True)
+    status = serializers.CharField(max_length=200, read_only=True)
 
 
 class TestcaseMetrixSerializer(serializers.ModelSerializer):
@@ -35,6 +28,24 @@ class TestcaseMetrixSerializer(serializers.ModelSerializer):
     class Meta:
         model = TestCaseMetric
         exclude = ('created', 'modified', 'testcase')
+
+
+class SearchTestCaseSerializer(serializers.Serializer):
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(max_length=200, read_only=True)
+    priority = serializers.CharField(max_length=200, read_only=True)
+    module = serializers.CharField(max_length=200, read_only=True)
+    testcase_type = serializers.CharField(max_length=200, read_only=True)
+
+    def get_priorty(self, obj):
+        return obj.testcase.priority.split('_')[0].upper()
+
+    def to_representation(self, instance):
+        represent = super().to_representation(instance)
+        represent['priority'] = get_priority_repr(instance.priority)
+        represent['testcase_type'] = instance.testcase_type.capitalize()
+        return represent
 
 
 class TestCaseSerializer(serializers.ModelSerializer):
@@ -55,7 +66,6 @@ class TestCaseSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         metrics_data = validated_data.pop('metrics', [])
-        print(metrics_data)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -70,115 +80,17 @@ class TestCaseSerializer(serializers.ModelSerializer):
         repo['project'] = instance.project.name
         return repo
 
-class CreateTestCaseSerializer(serializers.ModelSerializer):
-
-    module = serializers.ListSerializer(
-        child=serializers.CharField(),
-        write_only=True,
-        required=False
-    )
-    likelihood = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    impact = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    failure_rate = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    failure = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    total_runs = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    direct_impact = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    defects = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    severity = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    feature_size = serializers.IntegerField(
-        required=True,
-        min_value=1,
-        max_value=100,
-        write_only=True
-    )
-    execution_time = serializers.DecimalField(
-        required=True,
-        max_digits=10,
-        decimal_places=2,
-        write_only=True
-    )
-
-    class Meta:
-        model = TestCaseModel
-        fields = (
-            'name', 'module', 'status', 'priority', 'likelihood', 'impact', 'failure_rate',
-            'failure', 'total_runs', 'direct_impact', 'defects', 'severity', 'feature_size',
-            'execution_time'
-        )
-
-    def create(self, validated_data):
-        module = validated_data.pop('module')
-        temp = {}
-        extract_matrix = [
-            'likelihood', 'impact', 'failure_rate',
-            'failure', 'total_runs', 'direct_impact', 'defects', 'severity', 'feature_size',
-            'execution_time'
-        ]
-        for field in extract_matrix:
-            temp[field] = validated_data.pop(field, None)
-        module, instance = Module.objects.get_or_create(name=module)
-        instance = TestCaseModel.objects.create(module=module, **validated_data)
-        TestCaseMetric.objects.create(testcase=instance, **temp)
-        return instance
-
 
 class FileUploadSerializer(serializers.Serializer):
 
-    file = serializers.FileField(required=True)
+    file_name = serializers.FileField(required=True, write_only=True)
 
-
-class TestSerializer(serializers.Serializer):
-
-    module = serializers.ListSerializer(
-        child=serializers.CharField(),
-        required=True,
-        write_only=True
-    )
-
-    class Meta:
-        model = TestCaseModel
-        fields = ('name', 'module')
-
+    def validate_file_name(self, file):
+        allowed_extensions = ['.csv', '.xlsx', '.xls']
+        ext = Path(file.name).suffix.lower()
+        if ext not in allowed_extensions:
+            raise serializers.ValidationError("Only .csv, .xlsx, .xls files are allowed")
+        return file
 
 class AITestPlanSerializer(serializers.Serializer):
     user_msg = serializers.CharField(max_length=500)   # new field
@@ -302,8 +214,6 @@ class TestPlanSerializer(serializers.Serializer):
 class TestScoreSerializer(serializers.Serializer):
 
     id = serializers.CharField(max_length=200, source='testcase.name')
-    # Fixed: Removed ListSerializer since module is a single ForeignKey
-    # module = serializers.CharField(max_length=200, source='testcase.module.name')
     mode = serializers.CharField(max_length=200, default='ai', read_only=True)
     priority = serializers.CharField(max_length=200, source='testcase.priority')
     score = serializers.DecimalField(
@@ -543,13 +453,7 @@ class TestCaseScoreSerializer(serializers.Serializer):
     testcases = serializers.ListSerializer(child=serializers.CharField())
 
 
-class SearchSerializer(serializers.Serializer):
-
-    query = serializers.CharField()
-
-
-
-class HistroryPlanDetailsSerializer(serializers.ModelSerializer):
+class HistoryPlanDetailsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = HistoryTestPlan
@@ -578,12 +482,6 @@ class PlanHistorySerializer(serializers.ModelSerializer):
         model = HistoryTestPlan
         fields = ('id', 'version', 'modules')
 
-    # def get_modules(self, obj):
-    #     print('obj', obj['other_changes']['modules'])
-    #     try:
-    #         return [i.name for i in obj.testplan.modules.all()]
-    #     except Exception:
-    #         return []
 
     def get_other_changes(self, obj):
         try:

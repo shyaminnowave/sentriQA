@@ -87,6 +87,11 @@ def generate_session_id():
         return False
 
 
+def get_priority_repr(obj):
+    parts = obj.split('_')
+    return parts[0].capitalize() + " " + parts[1]
+
+
 def generate_score(data):
     queryset = TestCaseMetric.objects.filter(
                 Q(testcase__module__id__in=data.get('module'))  &
@@ -100,8 +105,6 @@ def generate_score(data):
         score_obj = TestCaseScore()
         score = score_obj.calculate_scores(queryset)
         output_counts = data.get('output_counts', 0)
-        if len(score) > output_counts:
-            score = score[:output_counts]
         for match in score:
             # Convert to appropriate data types
             result = {
@@ -154,10 +157,7 @@ def save_version(data):
     session = data.pop('session')
     modules = data.pop('modules')
     status = data.pop('status') if data.pop('status') else 'saved'
-    print('status', status)
-
     get_modules = Module.objects.filter(name__in=modules)
-
     try:
         get_session = AISessionStore.objects.get(session_id=session)
     except AISessionStore.DoesNotExist:
