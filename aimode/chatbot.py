@@ -14,15 +14,25 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
     logger.info(f"[chatbot.py] get_llm_response called with session_id={session_id}, query={query}")
 
     config = {"configurable": {"thread_id": session_id}}
-    # Pass the user prompt and session_id in the state
+    # Pass the  prompt and session_id in the state
     state = {
         "messages": [HumanMessage(content=query)],
         "user_prompt": query,
         "session_id": session_id
     }
+
     logger.info(f"[chatbot.py] Invoking graph with state keys: {list(state.keys())}")
 
-    messages = graph.invoke(state, config=config)
+    # messages = graph.invoke(state, config=config)
+    try:  
+        messages = graph.invoke(state, config=config)
+    except Exception as e: 
+        logger.error(f"[chatbot.py] LLM or tool execution failed: {e}")
+        return {
+            "content": "Something went wrong while creating the test plan. Please retry or modify your parameters.",
+            "tcs_data": {},
+            "suggestions": [],
+        }
     msgs = messages["messages"]
     last_human_index = max((i for i, m in enumerate(msgs) if isinstance(m, HumanMessage)), default=-1)
     last_after_human = msgs[last_human_index + 1:] if last_human_index >= 0 else []
@@ -60,18 +70,18 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
                     break
                 elif requested_count > len(tcs_list):
                     # Missing or low-count case detection
-                    content_dict["content"] = (
-                        f"Only {len(tcs_list)} matching test cases were found based on your criteria. "
-                        "Would you like to adjust the filters and continue?\n"
+                    if version_message:
+                        content_dict["content"] = f"\n{version_message}."
+                    content_dict["content"] += (
+                        f" \nOnly {len(tcs_list)} matching test cases were found based on your criteria. "
+                        "Would you like to adjust the parameters and continue?\n"
                     )
                     content_dict["suggestions"] = ["Modify Parameters"]
                 else:
                     # Normal success
                     content_dict["content"] = "Test plan generated successfully. You can view all test cases in the left panel.\n"
-
-                # Append version message if available
-                if version_message:
-                    content_dict["content"] += f"\n{version_message}"
+                    if version_message:
+                        content_dict["content"] += f"\n{version_message}"
             else:
                 # Fallback for unexpected content
                 content_dict["content"] = "Test plan generated successfully."
@@ -88,7 +98,11 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
                 "tcs_data": {},
                 "suggestions": suggestions,
             }
+        
 
     logger.info(f"[chatbot.py] Final tcs_data: {content_dict['tcs_data']}")
+    # Hide suggestion header if no valid suggestions exist
+    if not content_dict.get("suggestions"):
+        content_dict.pop("suggestions", None)
 
     return content_dict

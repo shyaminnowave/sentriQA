@@ -55,29 +55,42 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
             "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "data": {},
             "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "message": f"Error running scoring: {e}",
+            "message": "Something went wrong while creating the test plan. Please retry or modify your parameters.",
         }
 
     # Step 3: LLM selection
     try:
         logger.info("[INTELLIGENT_SELECTOR] Preparing LLM prompt for intelligent filtering")
-        prompt = f"""
-        You are an expert QA planner. Select the most relevant {output_counts} test cases.
 
+        # --- System Prompt ---
+        system_prompt = """
+        You are an expert QA test planner.
+        Your job is to intelligently select the most relevant test cases based on testcases, user input, priority, and module relevance.
+        Always respond ONLY with a valid JSON list of selected test cases — no explanation or extra text.
+        """
+
+        # --- User Prompt ---
+        user_prompt = f"""
         USER QUERY: {user_query}
         PRIORITY: {priority}
         MODULES: {module_names}
 
-        Here is a list of all candidate test cases in JSON format:
+        Below is the list of all candidate test cases in JSON:
         {json.dumps(testcases, indent=2)}
 
-        Return ONLY a valid JSON list of selected testcases (no text before or after).
+        Select {output_counts} test cases that are **most relevant** to the requested user input.
+        Return ONLY a valid JSON array of selected test cases.
         """
 
-        llm_response = llm.invoke(prompt)
+        # --- LLM Call ---
+        llm_response = llm.invoke([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ])
+
         content = llm_response.content.strip()
 
-        # Clean up fenced code blocks
+        # --- Clean up fenced code blocks (if any) ---
         if "```json" in content:
             content = content.split("```json")[-1].split("```")[0]
 
@@ -86,10 +99,14 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
 
     except Exception as e:
         logger.error(f"[INTELLIGENT_SELECTOR] LLM selection failed: {e}")
-        selected_cases = testcases[:output_counts]
-        logger.warning("[INTELLIGENT_SELECTOR] Falling back to top-N scoring testcases")
+        # Graceful fallback response
+        return {
+            "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "data": {},
+            "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "message": "Something went wrong while creating the test plan. Please retry or modify your parameters.",
+        }
 
-    # Step 4: Format final response (same as generate_score)
     response = {
         "name": payload["name"],
         "description": payload["description"],

@@ -135,7 +135,7 @@ def generate_testplan(
         logger.error("Intelligent selector returned no testcases or error")
         return None
 
-    # Step 3: Save version if needed (same as before)
+    # Step 3: Save version if needed
     try:
         from apps.core.helpers import save_version
         from apps.core.models import AISessionStore, TestPlanSession

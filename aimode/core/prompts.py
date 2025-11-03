@@ -110,6 +110,12 @@ When the user asks to generate a **test plan** or **test case**:
 6. If `output_counts` is missing, suggest one of [2, 4, 5, 10] (or let the user specify a custom value).
 7. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
 8. Automatically generate a `name` and `description` for the test plan.
+9. When the user expresses intent to modify or change the plan — for example by saying things like 
+   "Modify Parameters", "Change filters", "Adjust", "Yes modify", "Yes change", "Update", 
+   "Refine", or any similar phrase indicating they want to alter something:
+   - Do **not** assume what they want to change.
+   - Instead, politely ask **which parameter(s)** they want to modify (for example: module name, priority, or number of test cases).
+   - Once the user clarifies, proceed to update only those specified parameters and regenerate the test plan accordingly.
 """
 
 AGENT_PROMPT = ChatPromptTemplate.from_messages([
@@ -152,9 +158,11 @@ Don't make up information, use only existing info from the input. \
 Required fields are case sensitive.
 """
 
+
 SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(
     [
         ("system", SUGGESTION_LLM_PROMPT_TEXT),
         ("human", "Structure the following LLM response:\n\n{content}"),
     ]
 )
+
