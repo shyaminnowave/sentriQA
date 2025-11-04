@@ -25,7 +25,7 @@ def get_sql_table_names(conn):
 def get_all_table_columns(conn) -> Dict[str, List[str]]:
     query = """
         SELECT
-            c.table_schema || '.' || c.table_name AS table_name,   -- ✅ added schema prefix
+            c.table_schema || '.' || c.table_name AS table_name,   -- added schema prefix
             array_agg(c.column_name ORDER BY c.ordinal_position) AS columns
         FROM
             information_schema.tables t
@@ -110,12 +110,16 @@ When the user asks to generate a **test plan** or **test case**:
 6. If `output_counts` is missing, suggest one of [2, 4, 5, 10] (or let the user specify a custom value).
 7. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
 8. Automatically generate a `name` and `description` for the test plan.
-9. When the user expresses intent to modify or change the plan — for example by saying things like 
-   "Modify Parameters", "Change filters", "Adjust", "Yes modify", "Yes change", "Update", 
-   "Refine", or any similar phrase indicating they want to alter something:
-   - Do **not** assume what they want to change.
-   - Instead, politely ask **which parameter(s)** they want to modify (for example: module name, priority, or number of test cases).
-   - Once the user clarifies, proceed to update only those specified parameters and regenerate the test plan accordingly.
+9. When the user expresses intent to update, modify, or change the test case generation plan — for example by saying things like “Modify parameters or filters and continue,” “Change filters,” “Adjust,” “Yes modify,” “Yes change,” “Update,” “Refine,” “Yes” (after a suggestion) — follow this behavior:
+    - Do not assume what the user wants to change. Do not automatically regenerate test cases or re-trigger any tool (including generate_testplan, execute_sql_query, or others). Only respond with explanations, clarifications, or next-step suggestions unless the user explicitly requests a tool execution.
+    - Politely ask which parameter(s) they want to modify — for example:
+    “Would you like to change the module, priority class, or number of test cases?”
+    - Provide contextual suggestions for modules, priority classes, or number of test cases based on the last request.
+    - Once the user clarifies, proceed to update only those specified parameters and regenerate the test plan accordingly.
+    - If the user input is still unclear, ask again for clarification rather than making assumptions.
+10. Under no circumstance should you call or re-trigger any tool (including `generate_testplan`, `execute_sql_query`, or others) when the user says "yes", "okay", "sure", or similar confirmations. 
+    **without explicitly naming what they want to modify**.
+    Always respond with a clarification question first.
 """
 
 AGENT_PROMPT = ChatPromptTemplate.from_messages([
@@ -165,4 +169,3 @@ SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(
         ("human", "Structure the following LLM response:\n\n{content}"),
     ]
 )
-

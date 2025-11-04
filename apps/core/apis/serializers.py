@@ -13,6 +13,13 @@ class ModuleSerializer(serializers.ModelSerializer):
         fields = ('id', 'name')
 
 
+class TestcaseMetrixSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = TestCaseMetric
+        exclude = ('created', 'modified', 'testcase')
+
+
 class TestcaseListSerializer(serializers.Serializer):
 
     id = serializers.IntegerField(read_only=True)
@@ -21,13 +28,17 @@ class TestcaseListSerializer(serializers.Serializer):
     module = serializers.CharField(source='module__name', max_length=200, read_only=True)
     testcase_type = serializers.CharField(max_length=200, read_only=True)
     status = serializers.CharField(max_length=200, read_only=True)
+    metrics = TestcaseMetrixSerializer(many=True, read_only=True)
 
+    def to_representation(self, instance):
+        response = super().to_representation(instance)
+        _data = response.pop('metrics', [])
+        response['score'] = 0
+        for i in _data:
+            for key, value in i.items():
+                response[key] = value
+        return response
 
-class TestcaseMetrixSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = TestCaseMetric
-        exclude = ('created', 'modified', 'testcase')
 
 
 class SearchTestCaseSerializer(serializers.Serializer):

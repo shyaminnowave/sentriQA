@@ -75,7 +75,7 @@ class QueryChangeDetectorLLM:
             return is_major
         except Exception as e:
             logger.error(f"[ChangeDetector] LLM failed to decide major change: {e}")
-            return True  # Default to save if LLM fails
+            return False  # Default to save if LLM fails
 
 
 

@@ -36,8 +36,7 @@ class ModuleAPIView(generics.ListAPIView):
 class TestCaseList(c.CustomListCreateAPIView):
 
     def get_queryset(self):
-        queryset = (TestCaseModel.objects.select_related('module')
-                    .values('id', 'name', 'module__name', 'testcase_type', 'priority', 'status'))
+        queryset = (TestCaseModel.objects.select_related('module').all())
         return queryset
 
     pagination_class = CustomPagination

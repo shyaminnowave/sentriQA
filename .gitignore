@@ -1,5 +1,6 @@
 .env
 .vscode
 .github
-__pycache__/
+*__pycache__/
+*pyc
 Dockerfile

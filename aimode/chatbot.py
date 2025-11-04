@@ -37,11 +37,28 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
     last_human_index = max((i for i, m in enumerate(msgs) if isinstance(m, HumanMessage)), default=-1)
     last_after_human = msgs[last_human_index + 1:] if last_human_index >= 0 else []
 
+    # --- Build and sanitize final chatbot content ---
+    raw_response = msgs[-1].content if hasattr(msgs[-1], "content") else str(msgs[-1])
+    logger.info(f"[chatbot.py] Raw assistant content before filtering: {raw_response[:250]}")
+
+    # Detect verbose inline plan dumps (LLM pre-tool chatter)
+    if any(kw in raw_response for kw in [
+        "Test Plan Name:", "Generated Test Cases:", "Modules:", "Priority:", "Description:"
+    ]):
+        logger.info("[chatbot.py] Detected verbose inline testplan response — trimming for user.")
+        display_text = (
+            "Test plan has been updated successfully. "
+            "You can view all test cases in the left panel."
+        )
+    else:
+        display_text = raw_response
+
     content_dict: Dict[str, Any] = {
-        "content": msgs[-1].content,
+        "content": display_text,
         "tcs_data": {},
         "suggestions": [],
-    }
+        }
+
     for msg in last_after_human:
         if isinstance(msg, ToolMessage) and msg.name == "generate_testplan":
             logger.info("[chatbot.py] Received tool output from generate_testplan (hidden from user).")
@@ -63,6 +80,7 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
                 tcs_list = tcs_info.get("testcases", [])
                 requested_count = tcs_info.get("output_counts", 0)
                 version_message = tcs_info.get("version_message")
+                no_save = tcs_info.get("no_save")
                 logger.info(f"version message : {version_message}")
                 if len(tcs_list) == 0:
                     # Guard against empty generation
@@ -76,12 +94,14 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
                         f" \nOnly {len(tcs_list)} matching test cases were found based on your criteria. "
                         "Would you like to adjust the parameters and continue?\n"
                     )
-                    content_dict["suggestions"] = ["Modify Parameters"]
+                    # content_dict["suggestions"] = ["Modify Parameters"]
                 else:
                     # Normal success
                     content_dict["content"] = "Test plan generated successfully. You can view all test cases in the left panel.\n"
                     if version_message:
                         content_dict["content"] += f"\n{version_message}"
+                if no_save:
+                    content_dict["content"] += f" \n {no_save} "
             else:
                 # Fallback for unexpected content
                 content_dict["content"] = "Test plan generated successfully."

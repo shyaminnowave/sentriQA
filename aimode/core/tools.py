@@ -17,16 +17,23 @@ load_dotenv()
 
 # Global session ID helper
 _current_session_id: Optional[str] = None
+_current_user_prompt: Optional[str] = None
 
-def set_current_session_id(session_id: str):
+def set_current_session_id(session_id: str, user_prompt: Optional[str] = None):
     """Set the session_id from agent.py"""
-    global _current_session_id
+    global _current_session_id, _current_user_prompt
     _current_session_id = session_id
+    _current_user_prompt = user_prompt
     logger.info(f"[tools.py] session_id set: {session_id}")
+    logger.info(f"[tools.py] user_prompt set: {user_prompt[:100]}")
 
 def get_current_session_id() -> Optional[str]:
     """Return the current session_id for tools"""
     return _current_session_id
+
+def get_current_user_prompt() -> Optional[str]:
+    """Return the current user_prompt for tools."""
+    return _current_user_prompt
 
 # SQL QUERY GENERATOR
 class SQLQueryGeneratorInput(BaseModel):
@@ -94,8 +101,8 @@ def generate_testplan(
     output_counts: int = None,
     module_names: list[str] = None,
     priority: List[str] = None,
-    user_prompt: Optional[str] = None,
-    session_id: Optional[str] = None,
+    user_prompt: str = None,
+    session_id: str = None,
 ):
     """
      Generates a structured test plan based on the given parameters and optionally saves it to the database.    
@@ -112,9 +119,11 @@ def generate_testplan(
      6. Returns the generated test cases data.
     """
 
-    if not session_id:
-        session_id = get_current_session_id() or "89023860-5bd5-48fa-adca-7f6bdab52c02"
-        logger.info(f"[generate_testplan] Using session_id: {session_id}")
+    # if not session_id:
+    #     session_id = get_current_session_id() or "89023860-5bd5-48fa-adca-7f6bdab52c02"
+    #     logger.info(f"[generate_testplan] Using session_id: {session_id}")
+    session_id = get_current_session_id()
+    user_prompt = get_current_user_prompt()
 
     # Validate required parameters
     if not (module_names and priority):
@@ -144,7 +153,7 @@ def generate_testplan(
         session_obj, _ = AISessionStore.objects.get_or_create(session_id=session_id)
         should_save = True
         save_reason = "New test plan generated"
-
+        logger.info(f"user_prompt: {user_prompt}")
         if user_prompt:
             should_save = change_detector.should_save_version(user_prompt, session_id)
             save_reason = "Major changes detected" if should_save else "Minor changes detected"
@@ -171,6 +180,8 @@ def generate_testplan(
                 logger.success(f"Saved test plan version {next_version} to database - {save_reason}")
         else:
             logger.info(f"Skipped saving test plan to database - {save_reason}")
+            if user_prompt and change_detector._user_requested_no_save(user_prompt):
+                tcs_data["data"]["no_save"] = " This test plan is not saved. "
 
 
     except Exception as e:

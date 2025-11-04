@@ -61,15 +61,14 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
     # Step 3: LLM selection
     try:
         logger.info("[INTELLIGENT_SELECTOR] Preparing LLM prompt for intelligent filtering")
-
+        logger.info(f"priority : {priority}")
+        logger.info(f"MODULES : {module_names}")
         # --- System Prompt ---
         system_prompt = """
         You are an expert QA test planner.
-        Your job is to intelligently select the most relevant test cases based on testcases, user input, priority, and module relevance.
+        Your job is to intelligently select the most relevant test cases based on testcases, user input,priority, and modules relevance.
         Always respond ONLY with a valid JSON list of selected test cases — no explanation or extra text.
         """
-
-        # --- User Prompt ---
         user_prompt = f"""
         USER QUERY: {user_query}
         PRIORITY: {priority}
@@ -78,8 +77,10 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
         Below is the list of all candidate test cases in JSON:
         {json.dumps(testcases, indent=2)}
 
-        Select {output_counts} test cases that are **most relevant** to the requested user input.
-        Return ONLY a valid JSON array of selected test cases.
+        Select **exactly {output_counts}** test cases that are most relevant to the PRIORITY, and MODULES.
+        If fewer than {output_counts} are relevant, return only those few.
+        Do NOT include extra test cases beyond {output_counts}.
+        Return ONLY a valid JSON array of the selected test cases — no extra text or explanations.
         """
 
         # --- LLM Call ---
