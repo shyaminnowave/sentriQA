@@ -29,7 +29,6 @@ def get_llm():
 
 def get_embeddings():
     global _embeddings
-    # Only initialize embeddings if deployment name is provided
     if _embeddings is None and OPENAI_EMBEDDING_DEPLOYMENT_NAME:
         try:
             _embeddings = AzureOpenAIEmbeddings(

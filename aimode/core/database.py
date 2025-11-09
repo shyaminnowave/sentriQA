@@ -9,9 +9,8 @@ load_dotenv()
 
 class SQLDatabaseConnection:
     """
-    Robust PostgreSQL connection manager (singleton pattern).
+    Robust PostgreSQL connection manager.
     Keeps one active connection alive and automatically reconnects if idle, broken, or closed.
-    Designed for long-lived AI/LLM services.
     """
     _instance = None
     _pg_conn = None
@@ -21,9 +20,7 @@ class SQLDatabaseConnection:
             cls._instance = super(SQLDatabaseConnection, cls).__new__(cls)
         return cls._instance
 
-    # Connection Setup
     def _get_db_credentials(self, user: str):
-        """Fetch PostgreSQL credentials from environment variables."""
         if user == "llm_user":
             return (
                 os.getenv("PGSQL_DATABASE_LLM_USER"),
@@ -36,8 +33,7 @@ class SQLDatabaseConnection:
 
     def connect_postgresql(self, user: str = "default"):
         """
-        Establish or reuse a PostgreSQL connection.
-        Will reconnect automatically if the existing one is invalid.
+        Establish or reuse a PostgreSQL connection. Reconnect automatically if the existing one is invalid.
         """
         if self._pg_conn and not self._pg_conn.closed:
             return self._pg_conn
@@ -50,7 +46,7 @@ class SQLDatabaseConnection:
                 user=db_user,
                 password=db_pass,
                 port=os.getenv("PGSQL_DATABASE_PORT"),
-                connect_timeout=10,  # Quick failover if DB is unreachable
+                connect_timeout=10, 
             )
             self._pg_conn.autocommit = True
             logger.success("PostgreSQL connection established.")
@@ -62,18 +58,14 @@ class SQLDatabaseConnection:
             logger.error(f"Unexpected PostgreSQL connection error: {e}")
             raise
 
-    # Health Check and Auto-Reconnect
     def ensure_connection_alive(self):
-        """
-        Verify and refresh the PostgreSQL connection if it’s idle or broken.
-        """
         try:
             if not self._pg_conn or self._pg_conn.closed:
                 logger.warning("PostgreSQL connection was closed. Reconnecting...")
                 return self.connect_postgresql()
 
             with self._pg_conn.cursor() as cur:
-                cur.execute("SELECT 1;")  # Lightweight ping
+                cur.execute("SELECT 1;") 
             return self._pg_conn
 
         except (InterfaceError, OperationalError):
@@ -83,7 +75,6 @@ class SQLDatabaseConnection:
             logger.error(f"Unexpected DB error during health check: {e}")
             return self.connect_postgresql()
 
-    # Execute Queries Safely
     def execute(self, query: str):
         self._pg_conn = self.ensure_connection_alive()
         try:
@@ -114,15 +105,10 @@ class SQLDatabaseConnection:
             logger.error(f"Unexpected SQL error: {e}\nQuery: {query}")
             return []
 
-
-    # Graceful Shutdown
     def close_connections(self):
-        """Close PostgreSQL connection safely."""
         if self._pg_conn and not self._pg_conn.closed:
             self._pg_conn.close()
             logger.info("PostgreSQL connection closed cleanly.")
 
-
-# Global Singleton Instance (used across the AI system)
 db = SQLDatabaseConnection()
 conn = db.connect_postgresql()

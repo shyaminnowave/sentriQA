@@ -1,3 +1,8 @@
+"""
+Intelligent hybrid test case selector:
+1. Fetch all candidate test cases using algorithmic scoring.
+2. Let the LLM select the most relevant ones.
+"""
 import json
 from loguru import logger
 from rest_framework import status
@@ -8,20 +13,13 @@ from apps.core.models import Module, TestCaseMetric
 from aimode.core.llms import llm
 
 def intelligent_testcase_selector(user_query: str, module_names: list[str], priority: List[str], output_counts: int, session_id: str):
-    """
-    Intelligent hybrid test case selector:
-    1. Fetch all candidate test cases using algorithmic scoring.
-    2. Let the LLM select the most relevant ones.
-    3. Return structured output.
-    """
-    logger.info(f"[INTELLIGENT_SELECTOR] Started for session={session_id}, modules={module_names}, priority={priority}")
-
+    logger.info(f"Started for session={session_id}, modules={module_names}, priority={priority}")
     # Step 1: Resolve module IDs
     module_ids = list(Module.objects.filter(name__in=module_names).values_list('id', flat=True))
     module_display_names = list(Module.objects.filter(id__in=module_ids).values_list('name', flat=True))
 
     if not module_ids:
-        logger.warning("[INTELLIGENT_SELECTOR] No valid module IDs found — skipping to fallback.")
+        logger.warning("No valid module IDs found — skipping to fallback.")
         return {
             "status": status.HTTP_400_BAD_REQUEST,
             "data": {},
@@ -39,18 +37,17 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
     }
 
     try:
-        logger.info("[INTELLIGENT_SELECTOR] Calling generate_score() to fetch all testcases")
+        logger.info("Calling generate_score() to fetch all testcases")
         score_data = generate_score(payload)
         testcases = score_data.get("data", {}).get("testcases", [])
-        logger.info(f"[INTELLIGENT_SELECTOR] Retrieved {len(testcases)} testcases from scoring engine")
-        # logger.info(f"Raw output: {testcases}")
+        logger.info(f"Retrieved {len(testcases)} testcases from scoring engine")
 
         if not testcases:
-            logger.warning("[INTELLIGENT_SELECTOR] No testcases found — returning empty result.")
+            logger.warning("No testcases found — returning empty result.")
             return score_data
 
     except Exception as e:
-        logger.exception(f"[INTELLIGENT_SELECTOR] generate_score failed: {e}")
+        logger.exception(f"generate_score failed: {e}")
         return {
             "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "data": {},
@@ -60,10 +57,10 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
 
     # Step 3: LLM selection
     try:
-        logger.info("[INTELLIGENT_SELECTOR] Preparing LLM prompt for intelligent filtering")
+        logger.info("Preparing LLM prompt for intelligent filtering")
         logger.info(f"priority : {priority}")
         logger.info(f"MODULES : {module_names}")
-        # --- System Prompt ---
+
         system_prompt = """
         You are an expert QA test planner.
         Your job is to intelligently select the most relevant test cases based on testcases, user input,priority, and modules relevance.
@@ -83,24 +80,19 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
         Return ONLY a valid JSON array of the selected test cases — no extra text or explanations.
         """
 
-        # --- LLM Call ---
         llm_response = llm.invoke([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ])
-
         content = llm_response.content.strip()
-
-        # --- Clean up fenced code blocks (if any) ---
         if "```json" in content:
             content = content.split("```json")[-1].split("```")[0]
 
         selected_cases = json.loads(content)
-        logger.info(f"[INTELLIGENT_SELECTOR] LLM selected {len(selected_cases)} testcases")
+        logger.info(f"LLM selected {len(selected_cases)} testcases")
 
     except Exception as e:
-        logger.error(f"[INTELLIGENT_SELECTOR] LLM selection failed: {e}")
-        # Graceful fallback response
+        logger.error(f"LLM selection failed: {e}")
         return {
             "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "data": {},
@@ -127,5 +119,5 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
         "message": "success",
     }
 
-    logger.success(f"[INTELLIGENT_SELECTOR] Completed successfully — returning {len(selected_cases)} testcases")
+    logger.success(f"Completed successfully — returning {len(selected_cases)} testcases")
     return response_format
