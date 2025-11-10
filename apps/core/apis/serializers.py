@@ -295,6 +295,7 @@ class ScoreSerializer(serializers.ModelSerializer):
         represent = super().to_representation(instance)
         represent['testcase_id'] = instance.testcases.id
         represent['testcase_name'] = instance.testcases.name
+        represent['testcase'] = instance.testcases.name
         represent['testplan'] = instance.testplan.name
         represent['generated'] = True
         represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
