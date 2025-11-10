@@ -11,6 +11,7 @@ from loguru import logger
 
 from aimode.core.tools import sql_query_generator, execute_sql_query, generate_testplan, save_new_testplan_version, set_current_session_id
 from aimode.core.prompts import AGENT_PROMPT, SUGGESTION_LLM_PROMPT
+from aimode.core.helpers import get_sql_table_names
 from aimode.core.llms import llm
 
 
@@ -54,8 +55,18 @@ def chatbot(state: AgentState):
         method="function_calling"
     )
     structured = chain.invoke({"content": content_to_structure})
+    try:
+        structured_dict = structured.dict()
+        base_content = structured_dict.get("base_content")
+        suggestions = structured_dict.get("suggestions", [])
 
-    # Attach structured output and session info
+        logger.info("[suggestions] --- Structured Output ---")
+        logger.info(f"[suggestions] Base content: {base_content}")
+        logger.info(f"[suggestions] Suggestions extracted: {suggestions}")
+        logger.debug(f"[suggestions] Full structured object: {structured_dict}")
+    except Exception as e:
+        logger.error(f"[suggestions] Failed to log structured suggestions: {e}")
+
     if hasattr(response, 'additional_kwargs'):
         response.additional_kwargs["structured"] = structured.dict()
         response.additional_kwargs["user_prompt"] = user_prompt

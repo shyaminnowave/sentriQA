@@ -1,8 +1,10 @@
 import uuid
+from datetime import datetime
 from jsonschema import ValidationError
 from rest_framework.generics import get_object_or_404
 from django.http import Http404
-from apps.core.models import TestCaseModel, Module, TestCaseMetric, Project, AISessionStore, TestPlanSession
+from apps.core.models import TestCaseModel, Module, TestCaseMetric, Project, AISessionStore, TestPlanSession, TestScore, \
+    TestCaseScoreModel
 from django.db.models import Q
 from django.utils.crypto import get_random_string
 from apps.core.testscore import TestCaseScore
@@ -76,7 +78,7 @@ class QueryHelpers:
             return False
         except Exception as e:
             return False
-
+        
 
 def generate_session_id():
     try:
@@ -85,11 +87,39 @@ def generate_session_id():
     except Exception as e:
         print(str(e))
         return False
+    
+def format_datetime(dt_string):
+    return dt_string.strftime('%B %d, %Y')
 
 
 def get_priority_repr(obj):
     parts = obj.split('_')
     return parts[0].capitalize() + " " + parts[1]
+
+
+def save_score(data=None):
+    testcase_lst = []
+    print('inside')
+    if data is None:
+        print('ud')
+        queryset = TestCaseMetric.objects.all()
+        for testcase in queryset:
+            if not TestCaseScoreModel.objects.filter(testcase__id=testcase.id).exists():
+                testcase_lst.append(testcase)
+        if testcase_lst:
+            score_obj = TestCaseScore()
+            score = score_obj.calculate_scores(testcase_lst)
+            for sc in score:
+                print(sc)
+    else:
+        testcase_ids = [tc.id for tc in data]
+        queryset = TestCaseMetric.objects.filter(testcase__id__in=testcase_ids)
+        print('inside')
+        score = score_obj.calculate_scores(queryset)
+        for sc in score:
+            "testing"
+            print(sc)
+    return True
 
 
 def generate_score(data):

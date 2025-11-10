@@ -27,22 +27,4 @@ def get_llm():
         logger.success('LLM Initialized')
     return _llm
 
-def get_embeddings():
-    global _embeddings
-    if _embeddings is None and OPENAI_EMBEDDING_DEPLOYMENT_NAME:
-        try:
-            _embeddings = AzureOpenAIEmbeddings(
-                azure_endpoint=OPENAI_ENDPOINT,
-                openai_api_key=OPENAI_API_KEY,
-                azure_deployment=OPENAI_EMBEDDING_DEPLOYMENT_NAME,
-                openai_api_version=OPENAI_API_VERSION
-            )
-            logger.success('Embeddings model initialized')
-        except Exception as e:
-            logger.warning(f"Could not initialize embeddings model: {e}")
-            logger.warning("Falling back to simple similarity methods")
-            _embeddings = None
-    return _embeddings
-
 llm = get_llm()
-embeddings = get_embeddings()

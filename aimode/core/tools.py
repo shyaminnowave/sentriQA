@@ -15,6 +15,7 @@ from aimode.core.llms import llm
 from apps.core.helpers import generate_score
 from apps.core.helpers import save_version
 from apps.core.models import AISessionStore, TestPlanSession
+from aimode.core.helpers import get_id_module_mapping, get_ids_by_module_names
 
 load_dotenv()
 
@@ -109,19 +110,6 @@ def execute_sql_query(sql_query) -> list:
     except Exception as e:
         logger.error(f"Error executing SQL query: {e}")
         return []
-
-# MODULE HELPERS
-def get_id_module_mapping():
-    try:
-        rows = db.execute("SELECT DISTINCT cm.name, cm.id FROM core.core_module AS cm")
-        return sorted([{"id": r[1], "name": r[0]} for r in rows], key=lambda x: x["id"])
-    except Exception as e:
-        logger.error(f"Error fetching module mapping: {e}")
-        return []
-
-def get_ids_by_module_names(module_names: list[str]) -> list[int]:
-    mapping = {m["name"]: m["id"] for m in get_id_module_mapping() if isinstance(m, dict)}
-    return [mapping.get(name) for name in module_names if name in mapping]
 
 # TEST PLAN GENERATOR
 class TestPlanGeneratorInput(BaseModel):

@@ -35,19 +35,8 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
     raw_response = msgs[-1].content if hasattr(msgs[-1], "content") else str(msgs[-1])
     logger.info(f"Raw assistant content before filtering: {raw_response[:250]}")
 
-    if any(kw in raw_response for kw in [
-        "Test Plan Name:", "Generated Test Cases:", "Modules:", "Priority:", "Description:"
-    ]):
-        logger.info("Detected verbose inline testplan response — trimming for user.")
-        display_text = (
-            "Test plan has been updated successfully. "
-            "You can view all test cases in the left panel."
-        )
-    else:
-        display_text = raw_response
-
     content_dict: Dict[str, Any] = {
-        "content": display_text,
+        "content": raw_response,
         "tcs_data": {},
         "suggestions": [],
         }
@@ -81,33 +70,33 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
                 elif requested_count > len(tcs_list):
                     if version_message:
                         content_dict["content"] = f"\n{version_message}."
-                    content_dict["content"] += (
+                    content_dict["content"] = (
                         f" \nOnly {len(tcs_list)} matching test cases were found based on your criteria. "
                         "Would you like to adjust the parameters and continue?\n"
                     )
                     
                 else:
                     content_dict["content"] = "Test plan generated successfully. You can view all test cases in the left panel.\n"
-                    if version_message:
-                        content_dict["content"] += f"\n{version_message}"
+                if version_message:
+                        content_dict["content"] += f"\n{version_message}."
                 if no_save:
                     content_dict["content"] += f" \n {no_save} "
-                    content_dict["suggestions"] += ["Save it as new version?"]
+                if "Test Cases:" in content_dict["content"]:
+                    content_dict["content"] = content_dict["content"].split("Test Cases:")[0].strip()
             else:
                 content_dict["content"] = "Test plan generated successfully."
 
             break
 
-    if not content_dict["tcs_data"]:
-        structured_dict = msgs[-1].additional_kwargs.get("structured") if hasattr(msgs[-1], 'additional_kwargs') else None
-        if structured_dict:
-            base_content = structured_dict.get("base_content", msgs[-1].content)
-            suggestions = structured_dict.get("suggestions", [])
-            content_dict = {
-                "content": base_content,
-                "tcs_data": {},
-                "suggestions": suggestions,
-            }
+    structured_dict = getattr(msgs[-1], "additional_kwargs", {}).get("structured", None)
+    if structured_dict:
+        base_content = structured_dict.get("base_content") or msgs[-1].content
+        suggestions = structured_dict.get("suggestions", [])
+        logger.info(f"[suggestions] Extracted structured suggestions: {suggestions}")
+        if suggestions:
+            existing = content_dict.get("suggestions", [])
+            merged = list(dict.fromkeys(existing + suggestions))
+            content_dict["suggestions"] = merged
         
 
     logger.info(f"Final tcs_data: {content_dict['tcs_data']}")
