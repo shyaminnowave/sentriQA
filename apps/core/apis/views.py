@@ -4,19 +4,22 @@ from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from apps.core.models import TestCaseMetric, TestCaseModel, Module, TestPlan, PriorityChoice, HistoryTestPlan, Project, TestPlanSession
+from apps.core.models import TestCaseMetric, TestCaseModel, Module, TestPlan, PriorityChoice, HistoryTestPlan, Project, \
+    TestPlanSession, TestScore
 from apps.core.utils import TestcaseImportExcel
 from apps.core.apis.serializers import TestcaseListSerializer, FileUploadSerializer, \
     TestMetrixSerializer, ModuleSerializer, TestPlanSerializer, TestScoreSerializer, \
     TestCaseNameSerializer, CreateTestPlanSerializer, TestPlanningSerializer, PlanSerializer, TestCaseOptionSerializer, \
     TestCaseScoreSerializer, PlanHistorySerializer, MetrixSerializer, HistoryPlanDetailsSerializer, \
-    TestplanSessionSerializer, SessionSerializer, TestCaseSerializer, SearchTestCaseSerializer
+    TestplanSessionSerializer, SessionSerializer, TestCaseSerializer, SearchTestCaseSerializer, PlanListSerializer
 from apps.core.utils import QueryHelpers
+from django.db.models import Prefetch
 from django.db.models import Max, IntegerField
 from drf_spectacular.utils import extend_schema
 from apps.core.pagination import CustomPagination
 from apps.core.apis.serializers import AITestPlanSerializer
 from sentriQA.helpers import custom_generics as c
+from django.db.models import Q
 from aimode.chatbot import get_llm_response
 from django.db.models.functions import Coalesce
 from apps.core.helpers import generate_score, generate_session_id
@@ -31,16 +34,38 @@ class ModuleAPIView(generics.ListAPIView):
     serializer_class = ModuleSerializer
     queryset = Module.objects.all()
 
-
 @extend_schema(tags=["Testcase List API"])
 class TestCaseList(c.CustomListCreateAPIView):
 
     def get_queryset(self):
-        queryset = (TestCaseModel.objects.select_related('module').all())
+        queryset = (TestCaseModel.objects.select_related('module').prefetch_related('metrics').all())
+        sort_by = self.request.query_params.get('sort_by', None)
+        order_by = self.request.query_params.get('order_by', None)
+        search = self.request.query_params.get('search', None)
+        field_mapping = {
+            'feature': 'module__name',
+            'likelihood': 'metrics__likelihood',
+            'impact': 'metrics__impact',
+            'failure_rate': 'metrics__failure_rate',
+            'failure': 'metrics__failure',
+            'total_runs': 'metrics__total_runs',
+            'direct_impact': 'metrics__direct_impact',
+            'defects': 'metrics__defects',
+            'severity': 'metrics__severity',
+            'feature_size': 'metrics__feature_size',
+            'execution_time': 'metrics__execution_time',
+        }
+        actual_field = field_mapping.get(sort_by, sort_by)
+        if sort_by:
+            if order_by == 'desc':
+                sort_by = f'-{actual_field}'
+            queryset = queryset.order_by(actual_field)
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(id__iexact=search))
         return queryset
 
     pagination_class = CustomPagination
-    filter_class = TestcaseFilter
+    filterset_class = TestcaseFilter
     serializer_class = TestcaseListSerializer
 
 
@@ -73,7 +98,7 @@ class SearchAPIView(generics.ListAPIView):
         return queryset
 
     pagination_class = CustomPagination
-    serializer_class = SearchTestCaseSerializer
+    serializer_class = TestcaseListSerializer
 
 
 @extend_schema(tags=["Testcase Excel Upload API"])
@@ -260,7 +285,7 @@ class AITestPlanningView(generics.GenericAPIView):
                 session = generate_session_id()
             response_dict = get_llm_response(user_msg, session)
             response_dict['session_id'] = session
-            if response_dict['tcs_data']:
+            if response_dict.get('tcs_data', None):
                 response_dict['chat_generated'] = True
             return Response(response_dict, status=status.HTTP_200_OK)
 
@@ -268,28 +293,28 @@ class AITestPlanningView(generics.GenericAPIView):
     
 
 
-@extend_schema(tags=["Testcase Plan List API"])
-class TestPlanView(APIView):
+# @extend_schema(tags=["Testcase Plan List API"])
+# class TestPlanView(APIView):
 
-    serializer_class = TestMetrixSerializer
+#     serializer_class = TestMetrixSerializer
 
-    def post(self, request, *args, **kwargs):
-        modules = request.data.get('module')
+#     def post(self, request, *args, **kwargs):
+#         modules = request.data.get('module')
 
-        if not modules:
-            return Response(
-                {'error': 'module parameter is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         if not modules:
+#             return Response(
+#                 {'error': 'module parameter is required'},
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        # Convert single module to list
-        if not isinstance(modules, list):
-            modules = [modules]
+#         # Convert single module to list
+#         if not isinstance(modules, list):
+#             modules = [modules]
 
-        queryset = TestCaseModel.objects.filter(module__name__in=modules)
-        sub_query = TestCaseMetric.objects.filter(testcase__in=queryset)
-        serializer = TestMetrixSerializer(sub_query, many=True)
-        return Response(serializer.data)
+#         queryset = TestCaseModel.objects.filter(module__name__in=modules)
+#         sub_query = TestCaseMetric.objects.filter(testcase__in=queryset)
+#         serializer = TestMetrixSerializer(sub_query, many=True)
+#         return Response(serializer.data)
 
 
 @extend_schema(tags=["Testcase Score List API"])
@@ -337,57 +362,53 @@ class GetScoreViewAPIView(generics.GenericAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TestPlanView(generics.GenericAPIView):
+class TestPlanView(generics.ListAPIView):
 
-    serializer_class = TestPlanningSerializer
-    queryset = TestPlan.objects.all()
+    serializer_class = PlanListSerializer
+    queryset = TestPlan.objects.filter(is_active=True).all()
+    pagination_class = CustomPagination
 
-    def get(self, request, *args, **kwargs):
-        serializer = self.get_serializer(
-            self.get_queryset(),
-            many=True
-        )
-        if serializer.data:
-            response_format = {
-                "status": status.HTTP_200_OK,
-                "data": serializer.data,
-                "status_code": status.HTTP_200_OK,
-                "message": "success",
-            }
-            return Response(response_format, status=status.HTTP_200_OK)
-        else:
-            response_format = {
-                "status": status.HTTP_400_BAD_REQUEST,
-                "data": None,
-                "status_code": status.HTTP_400_BAD_REQUEST,
-                "message": serializer.errors if serializer.errors else 'No data Found',
-            }
-            return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
+    # def get(self, request, *args, **kwargs):
+    #     serializer = self.get_serializer(
+    #         self.get_queryset(),
+    #         many=True
+    #     )
+    #     if serializer.data:
+    #         response_format = {
+    #             "status": status.HTTP_200_OK,
+    #             "data": serializer.data,
+    #             "status_code": status.HTTP_200_OK,
+    #             "message": "success",
+    #         }
+    #         return Response(response_format, status=status.HTTP_200_OK)
+    #     else:
+    #         response_format = {
+    #             "status": status.HTTP_400_BAD_REQUEST,
+    #             "data": None,
+    #             "status_code": status.HTTP_400_BAD_REQUEST,
+    #             "message": serializer.errors if serializer.errors else 'No data Found',
+    #         }
+    #         return Response(response_format, status=status.HTTP_400_BAD_REQUEST)
 
 
-class PlanDetailsView(generics.RetrieveUpdateDestroyAPIView):
+class PlanDetailsView(c.CustomRetrieveUpdateDestroyAPIView):
 
     serializer_class = PlanSerializer
 
     def get_object(self):
-        queryset = TestPlan.objects.get(id=self.kwargs['id'])
-        print(queryset)
+        queryset = TestPlan.objects.prefetch_related(
+            Prefetch(
+                'scores', queryset=TestScore.objects.select_related('testcases', 'testplan', 'testcases__module')),'modules'
+        ).get(
+            id=self.kwargs['id']
+        )
         return queryset
-    
-    def put(self, request, *args, **kwargs):
-        serializer = self.get_serializer(instance=self.get_object(), data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    def patch(self, request, *args, **kwargs):
-        return super().patch(request, *args, **kwargs)
     
     def delete(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        instance.is_active = False
+        instance.save()
+        return ResponseInfo.success_response(data=None, message="Test Plan Deleted Successfully", status_code=status.HTTP_204_NO_CONTENT)
 
 
 class ConvertAPIView(APIView):

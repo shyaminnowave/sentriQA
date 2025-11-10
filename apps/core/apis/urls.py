@@ -18,9 +18,6 @@ urlpatterns = [
     # Search
     path('search', views.SearchAPIView.as_view(), name='search-list'),
 
-    # TestPlan APIs
-    path('test-plan', views.TestPlanningView.as_view(), name='test-plan'),
-
     # Session API
     path('session/save', views.TestPlanVersionAPI.as_view(), name='test-plan-version'),
 
@@ -31,7 +28,7 @@ urlpatterns = [
     # Testplan APIs
     path('test-plan', views.TestPlanningView.as_view(), name='test-plan'),
     path('create-testplan', views.CreateTestPlanView.as_view(), name='create-testplan'),
-    path('get-plans', views.TestPlanView.as_view(), name='get-plans'),
+    path('plan', views.TestPlanView.as_view(), name='get-plans'),
     path('plan/<int:id>', views.PlanDetailsView.as_view(), name='plan-detail'),
 
     # AI TestPlanCreate API

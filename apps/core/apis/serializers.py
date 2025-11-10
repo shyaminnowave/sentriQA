@@ -3,6 +3,7 @@ from rest_framework import serializers
 from pathlib import Path
 from apps.core.models import TestCaseModel, Module, TestCaseMetric, TestPlan, TestScore, HistoryTestPlan, \
     TestPlanSession, AISessionStore
+from apps.core.helpers import format_datetime
 from apps.core.helpers import get_priority_repr
 
 
@@ -25,7 +26,7 @@ class TestcaseListSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(max_length=200, read_only=True)
     priority = serializers.CharField(max_length=200, read_only=True)
-    module = serializers.CharField(source='module__name', max_length=200, read_only=True)
+    feature = serializers.CharField(source='module.name' ,max_length=200, read_only=True)
     testcase_type = serializers.CharField(max_length=200, read_only=True)
     status = serializers.CharField(max_length=200, read_only=True)
     metrics = TestcaseMetrixSerializer(many=True, read_only=True)
@@ -37,6 +38,9 @@ class TestcaseListSerializer(serializers.Serializer):
         for i in _data:
             for key, value in i.items():
                 response[key] = value
+        response['priority'] = get_priority_repr(instance.priority)
+        response['testcase_type'] = instance.testcase_type.capitalize()
+        response['status'] = instance.status.capitalize()
         return response
 
 
@@ -289,28 +293,33 @@ class ScoreSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         represent = super().to_representation(instance)
-        represent['testcase'] = instance.testcases.name
+        represent['testcase_id'] = instance.testcases.id
+        represent['testcase_name'] = instance.testcases.name
         represent['testplan'] = instance.testplan.name
         represent['generated'] = True
+        represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
+        represent['mode'] = instance.mode.upper()
+        represent['created'] = format_datetime(instance.created) if instance.created else None
+        represent['modified'] = format_datetime(instance.modified) if instance.modified else None
         represent['testscore'] = float(instance.testscore) if instance.testscore else 0
         return represent
+
 
 class PlanSerializer(serializers.ModelSerializer):
 
     testcases = ScoreSerializer(many=True, source='scores')
-
     modules = serializers.ListSerializer(
         child=serializers.CharField(),
         required=False,
     )
-    
+
     class Meta:
         model = TestPlan
-        fields = ('id', 'name', 'description', 'priority', 'output_counts', 'testcase_type', 'modes', 'modules', 'testcases')
+        fields = ('id', 'name', 'description', 'priority', 'output_counts', 'modules', 'testcases',
+                  'created', 'modified')
 
     def create(self, validated_data):
         return super().create(validated_data)
-
 
     def get_version_name(self, instance):
         latest_history = HistoryTestPlan.objects.filter(testplan=instance.id).order_by('-created').first()
@@ -321,7 +330,6 @@ class PlanSerializer(serializers.ModelSerializer):
             # if latest_history:
             #     return number
         return 'v1'
-    
 
     def add_histroy(self, instance, version=None, testcases=None, other_changes=None):
         get_instance = instance if instance else None
@@ -339,7 +347,7 @@ class PlanSerializer(serializers.ModelSerializer):
                     "testplan_name": str(testplan_obj) if testplan_obj else "",
                     "mode": tc.get('mode', 'ai'),
                     "testscore": float(testscore) if testscore else 0.0
-                }   
+                }
                 _data.append(testcases_list)
             other_changes = other_changes if other_changes else {}
             other_changes['testcases'] = _data
@@ -378,8 +386,8 @@ class PlanSerializer(serializers.ModelSerializer):
         _temp['modules'] = modules
         self.add_histroy(instance, testcases=testcases_data, other_changes=_temp)
         return super().update(instance, validated_data)
-    
-    def delete(self, instance): 
+
+    def delete(self, instance):
         instance.is_active = False
         instance.save()
         return instance
@@ -387,8 +395,24 @@ class PlanSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         represent = super().to_representation(instance)
         represent['modules'] = [i.name for i in instance.modules.all()]
-        represent['generated'] = True
+        represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
+        represent['created'] = format_datetime(instance.created)
+        represent['modified'] = format_datetime(instance.modified)
         represent['modes'] = instance.modes.upper()
+        return represent
+
+
+class PlanListSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = TestPlan
+        fields = ('id', 'name', 'output_counts', 'created', 'modified', 'is_active')
+
+    def to_representation(self, instance):
+        represent = super().to_representation(instance)
+        represent['user'] = 'AI Generated'
+        represent['created'] = format_datetime(instance.created)
+        represent['modified'] = format_datetime(instance.modified)
         return represent
 
 
