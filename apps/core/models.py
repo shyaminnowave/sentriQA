@@ -180,7 +180,7 @@ class TestPlan(TimeStampedModel):
     modules = models.ManyToManyField(Module, blank=True, related_name='modules', null=True)
     testcase_type = models.CharField(max_length=20, default='functional', blank=True, null=True)
     modes = models.CharField(choices=ModeChoices.choices, default=ModeChoices.CLASSIC, max_length=20)
-    testcases = models.ManyToManyField(TestCaseModel, through='TestScore', blank=True, null=True)
+    testcases = models.ManyToManyField(TestCaseModel, through='TestScore', related_name='testscore', blank=True, null=True)
     is_active = models.BooleanField(default=True, null=True, blank=True)
 
     def __str__(self):
@@ -194,9 +194,9 @@ class TestPlan(TimeStampedModel):
         verbose_name_plural = _('Test Plans')
 
 
-class TestCaseScore(TimeStampedModel):
+class TestCaseScoreModel(TimeStampedModel):
 
-    testcases = models.ForeignKey(TestCaseModel, on_delete=models.CASCADE, blank=True)
+    testcases = models.ForeignKey(TestCaseModel, on_delete=models.CASCADE, blank=True, related_name='scores', null=True)
     rpn_value = models.DecimalField(default=0, max_digits=10, decimal_places=4)
     failure_rate = models.DecimalField(default=0, max_digits=10, decimal_places=4)
     code_change = models.DecimalField(default=0, max_digits=10, decimal_places=4)
@@ -227,6 +227,7 @@ class TestScore(TimeStampedModel):
 
     testplan = models.ForeignKey(TestPlan, on_delete=models.CASCADE, related_name='scores', to_field='id')
     testcases = models.ForeignKey(TestCaseModel, related_name='testcases', blank=True, on_delete=models.CASCADE, null=True,)
+    reasoning = models.TextField(blank=True, null=True)
     mode = models.CharField(choices=TestPlan.ModeChoices.choices, default=TestPlan.ModeChoices.AI, max_length=20, blank=True, null=True)
     testscore = models.DecimalField(default=0, blank=True, null=True, decimal_places=4, max_digits=10)
 
