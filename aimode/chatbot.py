@@ -1,6 +1,7 @@
 import json, ast
 from typing import Dict, Any
 from aimode.core.agent import graph
+from aimode.core.tools import get_last_generated_testplan
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 from loguru import logger
@@ -31,9 +32,10 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
     msgs = messages["messages"]
     last_human_index = max((i for i, m in enumerate(msgs) if isinstance(m, HumanMessage)), default=-1)
     last_after_human = msgs[last_human_index + 1:] if last_human_index >= 0 else []
+    # logger.info(f"last_after_human: {last_after_human}")
 
     raw_response = msgs[-1].content if hasattr(msgs[-1], "content") else str(msgs[-1])
-    logger.info(f"Raw assistant content before filtering: {raw_response[:250]}")
+    # logger.info(f"Raw assistant content before filtering: {raw_response[:250]}")
 
     content_dict: Dict[str, Any] = {
         "content": raw_response,
@@ -43,9 +45,11 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
 
     for msg in last_after_human:
         if isinstance(msg, ToolMessage) and msg.name == "generate_testplan":
+        # if getattr(msg, "name", "") == "generate_testplan":
             logger.info("Received tool output from generate_testplan (hidden from user).")
             raw_content = msg.content.strip()
-            if "error" not in raw_content.lower():
+            # if "error" not in raw_content.lower():
+            if "success" in raw_content.lower():
                 try:
                     if raw_content.startswith("{") or raw_content.startswith("["):
                         content_dict["tcs_data"] = json.loads(raw_content)
@@ -81,24 +85,32 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
                         content_dict["content"] += f"\n{version_message}."
                 if no_save:
                     content_dict["content"] += f" \n {no_save} "
-                if "Test Cases:" in content_dict["content"]:
-                    content_dict["content"] = content_dict["content"].split("Test Cases:")[0].strip()
             else:
                 content_dict["content"] = "Test plan generated successfully."
 
             break
+        if isinstance(msg, ToolMessage) and msg.name == "save_new_testplan_version":
+
+            raw_save_output = msg.content.strip()
+            try:
+                if raw_save_output.startswith("{") or raw_save_output.startswith("["):
+                    content_dict["tcs_data"] = json.loads(raw_save_output)
+                else:
+                    content_dict["tcs_data"] = ast.literal_eval(raw_save_output)
+            except Exception as e:
+                logger.error(f"Failed parsing save tool output: {e}")
 
     structured_dict = getattr(msgs[-1], "additional_kwargs", {}).get("structured", None)
     if structured_dict:
         base_content = structured_dict.get("base_content") or msgs[-1].content
         suggestions = structured_dict.get("suggestions", [])
-        logger.info(f"[suggestions] Extracted structured suggestions: {suggestions}")
+        logger.info(f"Extracted structured suggestions: {suggestions}")
         if suggestions:
             existing = content_dict.get("suggestions", [])
             merged = list(dict.fromkeys(existing + suggestions))
             content_dict["suggestions"] = merged
         
-
+    # content_dict["tcs_data"] = get_last_generated_testplan(session_id)
     logger.info(f"Final tcs_data: {content_dict['tcs_data']}")
     if not content_dict.get("suggestions"):
         content_dict.pop("suggestions", None)

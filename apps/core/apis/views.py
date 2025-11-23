@@ -16,7 +16,7 @@ from apps.core.utils import QueryHelpers
 from django.db.models import Prefetch
 from django.db.models import Max, IntegerField
 from drf_spectacular.utils import extend_schema
-from apps.core.pagination import CustomPagination
+from apps.core.pagination import CustomPagination, TestCasePagination
 from apps.core.apis.serializers import AITestPlanSerializer
 from sentriQA.helpers import custom_generics as c
 from django.db.models import Q
@@ -26,6 +26,11 @@ from apps.core.helpers import generate_score, generate_session_id
 from django.contrib.postgres.search import SearchVector, SearchQuery
 from sentriQA.helpers.renders import ResponseInfo
 from apps.core.filters import TestcaseFilter
+from apps.core.helpers import generate_score
+from apps.core.helpers import generate_session_id
+from aimode.core.testplan_filter import run_filter_flow
+from django.db.models import Avg, Count
+from apps.core.ai_filter import get_filtered_data
 
 
 @extend_schema(tags=["Modules List API"])
@@ -38,12 +43,13 @@ class ModuleAPIView(generics.ListAPIView):
 class TestCaseList(c.CustomListCreateAPIView):
 
     def get_queryset(self):
-        queryset = (TestCaseModel.objects.select_related('module').prefetch_related('metrics').all())
+        queryset = (TestCaseModel.objects.select_related('module').prefetch_related('metrics', 'scores').all())
         sort_by = self.request.query_params.get('sort_by', None)
         order_by = self.request.query_params.get('order_by', None)
         search = self.request.query_params.get('search', None)
         field_mapping = {
             'feature': 'module__name',
+            'score':   'scores__score',
             'likelihood': 'metrics__likelihood',
             'impact': 'metrics__impact',
             'failure_rate': 'metrics__failure_rate',
@@ -144,9 +150,20 @@ class GetTestVersionAPI(c.CustomGenericAPIView):
     serializer_class = SessionSerializer
 
     def get_queryset(self):
-        queryset = TestPlanSession.objects.only('id', 'version', 'status').filter(session__session_id=self.kwargs.get('token'))
+        queryset = []
+        if self.kwargs.get('token') != 'null':
+            queryset = (TestPlanSession.objects.only('id', 'version', 'status', 'created').
+                        filter(session__session_id=self.kwargs.get('token')))
         return queryset
 
+    def get(self, request, *args, **kwargs):
+        if self.kwargs.get('token'):
+            serializer = self.serializer_class(self.get_queryset(), many=True)
+            if serializer.data:
+                return ResponseInfo.success_response(data=serializer.data, message="Test Plan Version Successful")
+            else:
+                return ResponseInfo.success_response(data=None, message="Test Plan Version Not Found")
+        return ResponseInfo.success_response(data=None, status_code=status.HTTP_200_OK)
 
 class VersionDetailAPI(generics.GenericAPIView):
 
@@ -411,6 +428,74 @@ class PlanDetailsView(c.CustomRetrieveUpdateDestroyAPIView):
         return ResponseInfo.success_response(data=None, message="Test Plan Deleted Successfully", status_code=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(tags=["AI Testcase Plan Creation API"])
+class AITestCaseFilterChat(generics.GenericAPIView):
+
+    pagination_class = TestCasePagination
+    serializer_class = AITestPlanSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            user_msg = serializer.validated_data.get('user_msg')
+            session = serializer.validated_data.get('session_id')
+            # if not session or session == "":
+            #     session = generate_session_id()
+
+            response_dict = run_filter_flow(user_msg, session)
+            response_dict['session_id'] = session
+
+            if response_dict.get('tcs_data', None):
+                response_dict['chat_generated'] = True
+
+                # Your data is a list of dicts like:
+                # [{'id': 2, 'name': '...', 'priority': '...', ...}, {...}, ...]
+                serialized_data = response_dict['tcs_data']['tcs']
+
+                # Paginate the list
+                page = self.paginate_queryset(serialized_data)
+
+                if page is not None:
+                    # Get paginated response
+                    paginated_response = self.get_paginated_response(page)
+                    response_dict['tcs_data'].pop('tcs')
+                    response_dict['tcs_data'] = paginated_response.data
+                else:
+                    # Fallback (shouldn't happen with pagination_class set)
+                    response_dict['tcs_data'].pop('tcs')
+                    response_dict['tcs_data'] = serialized_data
+
+            return Response(response_dict, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# class AITestCaseFilterChat(generics.GenericAPIView):
+#     pagination_class = CustomPagination
+#     serializer_class = AITestPlanSerializer
+#
+#
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         if serializer.is_valid():
+#             user_msg = serializer.validated_data.get('user_msg')
+#             session = serializer.validated_data.get('session_id')
+#             response_dict = run_filter_flow(user_msg, session)
+#             if response_dict.get('tcs_data', None):
+#                 pass
+
+        # if query:
+        #     response = get_filtered_data(query)
+        #     if response.get('test_repo', True):
+        #         response.pop('test_repo')
+        #         pagination = CustomPagination()
+        #         page = pagination.paginate_queryset(response.get('tcs'), request)
+        #         if page is not None:
+        #             serializer = TestcaseListSerializer(page, many=True)
+        #             return pagination.get_paginated_response(serializer.data)
+        # return Response({}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class ConvertAPIView(APIView):
 
     def get_modules(self, modules):
@@ -446,6 +531,13 @@ class ConvertAPIView(APIView):
                 "status_code": status.HTTP_400_BAD_REQUEST,
                 "message": "ERROR"
             }, status=status.HTTP_400_BAD_REQUEST)
+
+class GenerateScoreView(APIView):
+
+    def post(self, request, *args, **kwargs):
+        scores = generate_score(request.data)
+        print('score', scores)
+        return Response(scores, status=status.HTTP_200_OK)
     
 
 class TestPlanHistoryView(c.CustomListCreateAPIView):

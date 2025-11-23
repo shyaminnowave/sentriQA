@@ -1,6 +1,7 @@
 from typing import Dict, List
 from loguru import logger
 from aimode.core.database import db, conn
+# from database import db, conn
 
 def get_active_projects(conn):
     query = """
@@ -14,7 +15,6 @@ def get_active_projects(conn):
             cur.execute(query)
             results = cur.fetchall()
             projects = [r[0] for r in results]
-            logger.info(f"Fetched {len(projects)} active projects: {projects}")
             return projects
     except Exception as e:
         logger.error(f"Error fetching active projects: {e}")
@@ -37,7 +37,6 @@ def get_modules_by_project(conn, active_projects: list) -> Dict[str, list]:
                 cur.execute(query_template, (project,))
                 modules = [row[0] for row in cur.fetchall()]
                 project_modules[project] = modules
-                logger.info(f"Project '{project}' has {len(modules)} modules: {modules}")
     except Exception as e:
         logger.error(f"Error fetching modules for projects: {e}")
 

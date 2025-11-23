@@ -7,27 +7,28 @@ import json
 from loguru import logger
 from rest_framework import status
 from django.db.models import Q
-from typing import List, Optional, Dict, Any
+from typing import List, Dict
 from apps.core.helpers import generate_score
-from apps.core.models import Module, TestCaseMetric
+from apps.core.models import Module
 from aimode.core.llms import llm
 
-def intelligent_testcase_selector(user_query: str, module_names: list[str], priority: List[str], output_counts: int, session_id: str):
-    logger.info(f"Started for session={session_id}, modules={module_names}, priority={priority}")
-    # Step 1: Resolve module IDs
+
+def intelligent_testcase_selector(user_query: str, module_names: List[str], priority: List[str], output_counts: int, session_id: str):
+    logger.info(f"[START] intelligent_testcase_selector | session={session_id}, modules={module_names}, priority={priority}")
+
+    # Step 1:module IDs
     module_ids = list(Module.objects.filter(name__in=module_names).values_list('id', flat=True))
     module_display_names = list(Module.objects.filter(id__in=module_ids).values_list('name', flat=True))
 
     if not module_ids:
-        logger.warning("No valid module IDs found — skipping to fallback.")
         return {
             "status": status.HTTP_400_BAD_REQUEST,
             "data": {},
             "status_code": status.HTTP_400_BAD_REQUEST,
-            "message": "Invalid or empty module names",
+            "message": "Invalid or empty module names.",
         }
 
-    # Step 2: Run scoring algorithm to get all candidate testcases
+    # Step 2: Run scoring algorithm
     payload = {
         "name": f"Intelligent Plan for: {', '.join(module_names)}",
         "description": f"LLM-assisted selection for: {user_query}",
@@ -37,59 +38,63 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
     }
 
     try:
-        logger.info("Calling generate_score() to fetch all testcases")
+        logger.info("Fetching candidate testcases from scoring engine...")
         score_data = generate_score(payload)
         testcases = score_data.get("data", {}).get("testcases", [])
-        logger.info(f"Retrieved {len(testcases)} testcases from scoring engine")
+        logger.debug(testcases)
+        logger.info(f"Retrieved {len(testcases)} candidate testcases.")
 
         if not testcases:
-            logger.warning("No testcases found — returning empty result.")
             return score_data
 
     except Exception as e:
-        logger.exception(f"generate_score failed: {e}")
+        logger.exception("generate_score() failed.")
         return {
             "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "data": {},
             "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "message": "Something went wrong while creating the test plan. Please retry or modify your parameters.",
+            "message": "Error while fetching testcases. Please retry.",
         }
 
-    # Step 3: LLM selection
+    # Step 3: LLM selection (choose most relevant testcases)
     try:
-        logger.info("Preparing LLM prompt for intelligent filtering")
-        logger.info(f"priority : {priority}")
-        logger.info(f"MODULES : {module_names}")
-
         system_prompt = """
-        You are an expert QA test planner.
-        Your job is to intelligently select the most relevant test cases based on testcases, user input,priority, and modules relevance.
-        Always respond ONLY with a valid JSON list of selected test cases — no explanation or extra text.
+        You are an Expert QA Test Plan Manager working with a Risk-Based Test Planning (RBTP) system.
+        Your task is to intelligently select the most relevant and high-risk test cases for the given modules/features.
+
+        Selection criteria:
+        - Focus on test cases that cover **high-risk or business-critical functionalities**.
+        - Prioritize scenarios with **high failure**, strong **module dependencies**, or **system-wide impact**.
+        - Prefer test cases that validate **critical paths, edge conditions, or potential failure points**.
+        - Consider risk-related signals such as failure rate, defect density, and module sensitivity.
+
+        Respond ONLY with a valid JSON list of selected test cases (no explanation or text).
         """
+
         user_prompt = f"""
         USER QUERY: {user_query}
         PRIORITY: {priority}
         MODULES: {module_names}
 
-        Below is the list of all candidate test cases in JSON:
+        Below is the list of all candidate test cases:
         {json.dumps(testcases, indent=2)}
 
-        Select **exactly {output_counts}** test cases that are most relevant to the PRIORITY, and MODULES.
-        If fewer than {output_counts} are relevant, return only those few.
-        Do NOT include extra test cases beyond {output_counts}.
-        Return ONLY a valid JSON array of the selected test cases — no extra text or explanations.
+        Select **exactly {output_counts}** test cases that best fit the risk-based criteria.
+        If fewer than {output_counts} fit, return only those few.
+        Output ONLY valid JSON (list of selected testcases).
         """
 
         llm_response = llm.invoke([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ])
+
         content = llm_response.content.strip()
         if "```json" in content:
             content = content.split("```json")[-1].split("```")[0]
 
         selected_cases = json.loads(content)
-        logger.info(f"LLM selected {len(selected_cases)} testcases")
+        logger.info(f"LLM selected {len(selected_cases)} testcases.")
 
     except Exception as e:
         logger.error(f"LLM selection failed: {e}")
@@ -97,8 +102,62 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
             "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "data": {},
             "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "message": "Something went wrong while creating the test plan. Please retry or modify your parameters.",
+            "message": "Error during intelligent selection. Please retry.",
         }
+
+    # Step 4: Generate separate reasoning summary
+    reasoning = []
+    try:
+        logger.info("Generating reasoning for selected testcases...")
+
+        reasoning_system_prompt = """
+        You are a Senior QA Analyst contributing to Risk-Based Test Planning (RBTP) system.
+        Your task is to provide a concise, risk-focused reasoning for why each selected test case was chosen for testing of given modules or features.
+
+        Guidelines:
+        - Provide **1-2 clear, specific sentence** per test case.
+        - Base your reasoning on testcases and parameters like **failure rate, defect**.
+        - Explain how the test case helps cover high-risk areas, critical paths, or potential failure points.
+        - Avoid generic or obvious statements; focus on meaningful, risk-aware insights.
+        - Ensure each reasoning item is unique and tailored to the test case's purpose.
+
+        Return ONLY a valid JSON array in this format:
+        [
+        {"id": <testcase_id>, "reason": "<AI-driven risk-based explanation>"},
+        ...
+        ]
+        """
+
+
+        reasoning_user_prompt = f"""
+        MODULES: {module_names}
+        PRIORITY: {priority}
+
+        Selected Test Cases:
+        {json.dumps(selected_cases, indent=2)}
+
+        Generate risk-based reasoning for each test case.
+        """
+
+        reasoning_response = llm.invoke([
+            {"role": "system", "content": reasoning_system_prompt},
+            {"role": "user", "content": reasoning_user_prompt}
+        ])
+
+        reasoning_content = reasoning_response.content.strip()
+        if "```json" in reasoning_content:
+            reasoning_content = reasoning_content.split("```json")[-1].split("```")[0]
+
+        reasoning = json.loads(reasoning_content)
+        logger.info(f"Generated reasoning for {len(reasoning)} testcases.")
+
+    except Exception as e:
+        logger.error(f"Reasoning generation failed: {e}")
+        reasoning = [{"id": None, "reason": "Reasoning generation failed."}]
+
+    #Merging reasoning in testcases
+    for i in range(min(len(selected_cases), len(reasoning))):
+        selected_cases[i]["reason"] = reasoning[i].get("reason", "")
 
     response = {
         "name": payload["name"],
@@ -109,15 +168,15 @@ def intelligent_testcase_selector(user_query: str, module_names: list[str], prio
         "project": "default_project",
         "generate_test_count": len(selected_cases),
         "testcase_type": "functional",
-        "testcases": selected_cases,
+        "testcases": selected_cases, 
     }
 
-    response_format = {
+    final_response = {
         "status": status.HTTP_200_OK,
         "data": response,
         "status_code": status.HTTP_200_OK,
         "message": "success",
     }
 
-    logger.success(f"Completed successfully — returning {len(selected_cases)} testcases")
-    return response_format
+    logger.success(f"[COMPLETE] Returned {len(selected_cases)} testcases with {len(reasoning)} reasoning items.")
+    return final_response

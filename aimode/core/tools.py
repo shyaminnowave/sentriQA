@@ -1,10 +1,6 @@
-import os
-import hashlib
-import json
-import re
 from loguru import logger
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 
@@ -12,7 +8,6 @@ from aimode.core.database import db, conn
 from aimode.core.prompts import build_sql_generation_prompt, get_sql_table_names
 from aimode.core.intelligent_testcase_selector import intelligent_testcase_selector
 from aimode.core.llms import llm
-from apps.core.helpers import generate_score
 from apps.core.helpers import save_version
 from apps.core.models import AISessionStore, TestPlanSession
 from aimode.core.helpers import get_id_module_mapping, get_ids_by_module_names
@@ -22,6 +17,7 @@ load_dotenv()
 _current_session_id: Optional[str] = None
 _current_user_prompt: Optional[str] = None
 _last_generated_testplan: Optional[dict] = None
+_last_generated_testplans: dict[str, dict] = {}
 
 def set_last_generated_testplan(plan_data: dict):
     global _last_generated_testplan
@@ -30,6 +26,7 @@ def set_last_generated_testplan(plan_data: dict):
 
 def get_last_generated_testplan() -> Optional[dict]:
     return _last_generated_testplan
+
 
 def set_current_session_id(session_id: str, user_prompt: Optional[str] = None):
     global _current_session_id, _current_user_prompt
@@ -47,10 +44,63 @@ def get_current_user_prompt() -> Optional[str]:
 class SQLQueryGeneratorInput(BaseModel):
     user_query: str
 
+@tool(description="Filter the testcases")
+def filter_testcases_tool(messages: List[Dict], state: Dict):
+    # Render the SYSTEM + MESSAGES via ChatPromptTemplate
+    logger.debug("filter")
+    prompt = AGENT_FILTER_PROMPT.format_messages(messages=messages)
+    llm_response = llm.invoke(prompt)
+    content = llm_response.content.strip()
+
+    # --- Try JSON parse (final answer) ---
+    try:
+        text = content
+        if "```json" in text:
+            text = text.split("```json")[-1].split("```")[0]
+
+        data = json.loads(text)
+
+        # Require modules + priority (test_type optional)
+        if "modules" in data and "priority" in data:
+
+            # Update slot state
+            state["test_type"] = data.get("test_type")
+            state["modules"] = data["modules"]
+            state["priority"] = data["priority"]
+
+            logger.success("[filter_testcases_tool] Slot fill completed.")
+
+            return {
+                "status": status.HTTP_200_OK,
+                "message": "complete",
+                "is_complete": True,
+                "data": data,
+                "state": state,
+                "assistant": None,
+            }
+
+    except Exception:
+        pass
+
+    # --- Not complete → The LLM is asking next question ---
+    logger.info("[filter_testcases_tool] Asking next question.")
+
+    return {
+        "status": status.HTTP_200_OK,
+        "message": "continue",
+        "is_complete": False,
+        "data": None,
+        "state": state,
+        "assistant": content,  # this is the assistant's question
+    }
+
 @tool(description="Saves the last generated test plan version to the database.")
 def save_new_testplan_version():
     try:
         testplan_data = get_last_generated_testplan()
+        session_id = get_current_session_id()
+        # testplan_data = get_last_generated_testplan(session_id)
+
         if not testplan_data:
             logger.warning("No last test plan found.")
             return {"status": 400, "message": "No test plan found to save."}
@@ -77,7 +127,13 @@ def save_new_testplan_version():
 
         save_version(save_data)
         logger.success(f"Saved test plan version {next_version} for session {session_id}")
-        return {"status": 200, "message": f"Test plan saved as version {next_version}", "version_saved": next_version}
+        final_response = {
+        "status": 200,
+        "data": testplan_data,
+        "message": f"Test plan saved as version {next_version}", "version_saved": next_version,
+            }
+        return final_response
+        # return {"status": 200, "message": f"Test plan saved as version {next_version}", "version_saved": next_version}
 
     except Exception as e:
         logger.error(f"Error saving version: {e}")
@@ -122,7 +178,7 @@ class TestPlanGeneratorInput(BaseModel):
     session_id: Optional[str] = Field(None, description="Session ID passed from the front end")
 
 
-@tool(args_schema=TestPlanGeneratorInput, description="Generates structured test plans using intelligent LLM-assisted selection")
+@tool(args_schema=TestPlanGeneratorInput)
 def generate_testplan(
     name: str = None,
     description: str = None,
@@ -139,11 +195,8 @@ def generate_testplan(
         relevant modules, priority, and optional user prompt.
      2. Converts module names to module IDs for internal processing.
      3. Validates required parameters (output_counts, module_names, and priority); logs a warning and returns None if missing.
-     4. Constructs a payload and calls `intelligent_testcase_selector` to generate test cases for the test plan. Generates a structured test plan using the intelligent test case selector (algorithm + LLM).
-     5. If test cases are returned, optionally saves the test plan version:
-        - Uses a session ID to track the AI session.
-        - Checks with `change_detector` if a new version should be saved based on LLM reasoning and user instructions.
-        - Saves the new version using `save_version()` if required.
+     4. Constructs a payload to generate test cases for the test plan.
+     5. If test cases are returned, optionally saves the test plan version.
      6. Returns the generated test cases data.
     """
     session_id = get_current_session_id()
@@ -176,6 +229,7 @@ def generate_testplan(
             save_reason = "Major changes detected" if should_save else "Minor changes detected"
         if should_save:
             testcases = tcs_data.get("data", {}).get("testcases", [])
+            reasoning = tcs_data.get("data", {}).get("selection_reasoning", [])
             if not testcases:
                 logger.warning("No testcases generated — skipping version save.")
                 should_save = False
@@ -203,4 +257,6 @@ def generate_testplan(
     except Exception as e:
         logger.error(f"Error handling test plan version: {e}")
     set_last_generated_testplan(tcs_data)
+    # set_last_generated_testplan(tcs_data, session_id)
+
     return tcs_data

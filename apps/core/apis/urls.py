@@ -33,12 +33,13 @@ urlpatterns = [
 
     # AI TestPlanCreate API
     path('ai-test-plan', views.AITestPlanningView.as_view(), name='ai-test-plan'),
-
+    path('ai-filter-test', views.AITestCaseFilterChat.as_view()),
     # Utils APIs
     path('file-upload', views.FileUploadView.as_view(), name='file-upload'),
     path('test-scores', views.TestScores.as_view(), name='test-scores'),
     path('get-excel', views.TestScoreExcel.as_view(), name='get-excel'),
     path('convert', views.ConvertAPIView.as_view(), name='convert'),
+    path('testing', views.GenerateScoreView.as_view(), name='test'),
     path('plan-history/<int:id>', views.TestPlanHistoryView.as_view(), name='plan-history'),
     path('plan-history/<int:id>/<int:history_id>', views.HistoryPlanDetailsView.as_view(), name='plan-history'),
 ]

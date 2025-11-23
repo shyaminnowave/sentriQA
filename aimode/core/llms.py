@@ -1,4 +1,4 @@
-from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+from langchain_openai import AzureChatOpenAI
 import os
 from loguru import logger
 from dotenv import load_dotenv
@@ -12,7 +12,6 @@ OPENAI_CHAT_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", Non
 OPENAI_EMBEDDING_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME", None)
 
 _llm = None
-_embeddings = None
 
 def get_llm():
     global _llm

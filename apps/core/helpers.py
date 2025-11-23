@@ -10,6 +10,8 @@ from django.utils.crypto import get_random_string
 from apps.core.testscore import TestCaseScore
 from rest_framework import status
 from .datacls import Session
+# from .pagination import CustomPagination
+# from apps.core.apis.serializers import TestcaseListSerializer
 
 
 class QueryHelpers:
@@ -41,7 +43,7 @@ class QueryHelpers:
             return False
         except Exception as e:
             return False
-        
+
     @staticmethod
     def check_testcase_exists(name):
         try:
@@ -53,7 +55,7 @@ class QueryHelpers:
             return False
         except Exception as e:
             return False
-        
+
     @staticmethod
     def check_matrix_id(testcase):
         try:
@@ -66,7 +68,7 @@ class QueryHelpers:
             return False
         except Exception as e:
             return False
-        
+
     @staticmethod
     def get_project_inst(name):
         try:
@@ -78,7 +80,7 @@ class QueryHelpers:
             return False
         except Exception as e:
             return False
-        
+
 
 def generate_session_id():
     try:
@@ -87,7 +89,7 @@ def generate_session_id():
     except Exception as e:
         print(str(e))
         return False
-    
+
 def format_datetime(dt_string):
     return dt_string.strftime('%B %d, %Y')
 
@@ -124,9 +126,9 @@ def save_score(data=None):
 
 def generate_score(data):
     queryset = TestCaseMetric.objects.filter(
-                Q(testcase__module__id__in=data.get('module'))  &
-                Q(testcase__testcase_type='functional')
-            )
+        Q(testcase__module__id__in=data.get('module')) &
+        Q(testcase__testcase_type='functional')
+    )
     module__name = Module.objects.filter(
         id__in=data.get('module')
     ).values_list('name', flat=True)
@@ -139,25 +141,28 @@ def generate_score(data):
             # Convert to appropriate data types
             result = {
                 "id": match.testcase_id,
-                "testcase": str(match.testcase_name),
+                "name": str(match.testcase_name),
                 "modules": str(match.module),
                 "mode": "ai",
                 "generated": True,
-                "priority": str(match.priority),
+                "priority": get_priority_repr(str(match.priority)),
                 "testscore": float(match.total_score),
+                "failure_rate": float(match.failure_rate),
+                "defects": float(match.defects),
+                "testcase_type": str(match.testcase_type.capitalize()),
             }
             results.append(result)
     response = {
-            "name": data.get('name', ""),
-            "description": data.get('description', ""),
-            "modules": list(module__name),
-            "output_counts": data.get('output_counts'),
-            "priority": data.get('priority', 0),
-            "project": data.get('project'),
-            "generate_test_count": len(results) if results else "No testcase found for this Criteria",
-            "testcase_type": data.get('testcase_type', "functional"),
-            "testcases": results,
-        }
+        "name": data.get('name', ""),
+        "description": data.get('description', ""),
+        "modules": list(module__name),
+        "output_counts": data.get('output_counts'),
+        "priority": data.get('priority', 0),
+        "project": data.get('project'),
+        "generate_test_count": len(results) if results else "No testcase found for this Criteria",
+        "testcase_type": data.get('testcase_type', "functional"),
+        "testcases": results,
+    }
     response_format = {
         "status": status.HTTP_200_OK,
         "data": response,
@@ -175,7 +180,9 @@ def get_prev_version(session):
             instance.save()
         return None
     except Exception as e:
+        print("error", str(e))
         return None
+
 
 
 def save_version(data):
@@ -183,10 +190,10 @@ def save_version(data):
         session_data = Session(**data)
         data = session_data.model_dump()
     except Exception as e:
-        print(str(e))
-    session = data.pop('session')
+        print('Testing', str(e))
+    session = str(data.pop('session'))
     modules = data.pop('modules')
-    status = data.pop('status') if data.pop('status') else 'saved'
+    status = data.pop('status') if data.get('status') else 'saved'
     get_modules = Module.objects.filter(name__in=modules)
     try:
         get_session = AISessionStore.objects.get(session_id=session)

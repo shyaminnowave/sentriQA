@@ -133,6 +133,9 @@ class TestCaseScore:
         return TestCaseScoreResult(
             testcase_id=metric.testcase.id,
             testcase_name=metric.testcase.name,
+            testcase_type=metric.testcase.testcase_type,
+            failure_rate = metric.failure_rate,
+            defects = metric.defects,
             module=metric.testcase.module.name if metric.testcase.module else "N/A",
             priority=metric.testcase.priority,
             total_score=self._round_decimal(total_score),

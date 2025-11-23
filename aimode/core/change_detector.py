@@ -4,6 +4,7 @@ Detects major changes between consecutive queries using LLM reasoning, 'no save'
 from typing import Dict
 from loguru import logger
 from aimode.core.llms import llm
+from aimode.core.prompts import CHANGE_DETECTION_PROMPT
 
 # In-memory store for the last query per session
 LAST_QUERY_CACHE: Dict[str, str] = {}
@@ -49,7 +50,6 @@ class QueryChangeDetectorLLM:
 
     def _llm_decide_major_change(self, last_query: str, current_query: str) -> bool:
         try:
-            from aimode.core.prompts import CHANGE_DETECTION_PROMPT
             prompt = CHANGE_DETECTION_PROMPT.format_messages(
                 last_query=last_query,
                 current_query=current_query

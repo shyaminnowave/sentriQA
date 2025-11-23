@@ -26,6 +26,7 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path("api/", include("apps.core.apis.urls")),
+    path("api/jira/", include("apps.jira_integrations.urls")),
     re_path(r"^.*$", TemplateView.as_view(template_name="index.html")),
 ]
 

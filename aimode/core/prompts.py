@@ -4,6 +4,8 @@ from typing import Dict, List
 from loguru import logger
 from aimode.core.database import db, conn
 from aimode.core.helpers import get_active_projects, get_modules_by_project, get_sql_table_names, get_all_table_columns
+# from database import db, conn
+# from helpers import get_active_projects, get_modules_by_project, get_sql_table_names, get_all_table_columns
 from langchain_core.prompts import ChatPromptTemplate
 
 SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient SQL Query. 
@@ -47,15 +49,12 @@ table_columns = ", ".join(
 
 table_names = ", ".join(name[0] for name in get_sql_table_names(conn))
 active_projects = get_active_projects(conn)
-logger.info(f"Active Projects :{active_projects}")
 modules_by_project = get_modules_by_project(conn, active_projects)
-logger.info(f"Modules by project: {modules_by_project}")
 moduleProjects = json.dumps(modules_by_project, indent=2)
 moduleProjects_escaped = moduleProjects.replace("{", "{{").replace("}", "}}")
 
 module_names = db.execute("SELECT DISTINCT cm.name FROM core.core_module AS cm")
 module_priorities = db.execute("SELECT DISTINCT ct.priority FROM core.core_testcasemodel AS ct")
-logger.info(f"module priorities : {module_priorities}")
 
 AGENT_PROMPT_TEXT = f"""
 You are a helpful assistant with access to four tools: `sql_query_generator`, `execute_sql_query`, `generate_testplan` and 'save_new_testplan_version'.
@@ -113,33 +112,25 @@ CHANGE_DETECTION_PROMPT = ChatPromptTemplate.from_messages([
     ("system", CHANGE_DETECTION_PROMPT_TEXT)
 ])
 
+SUGGESTION_LLM_PROMPT_TEXT = """
+You are a Test Plan Structuring Assistant. Structure responses using only the provided context.
 
-SUGGESTION_LLM_PROMPT_TEXT = """\
-You are a Test Plan Structuring Assistant. Your goal is to structure responses **strictly using the given context**.
-
-Context (use ONLY these):
+Context:
 - Active projects: {{active_projects}}
-- Modules by projects (use ONLY these module names, no others): {{moduleProjects_escaped}}
-- Available priority classes: {{module_priorities}}
+- Allowed modules: {{moduleProjects_escaped}}
+- Allowed priority classes: {{module_priorities}}
 
-Task:
-Given an LLM response, extract and structure the information as follows:
-1. Extract the main summary as 'base_content' (shortened or cleaned if needed).
-2. Identify possible next actions, options, or recommendations as a list under 'suggestions'.
+Output:
+1. 'base_content' → short, clean summary of the LLM response.
+2. 'suggestions' → list of actionable next steps.
 
-Guidelines:
-1. 'base_content' must reflect the key intent of the LLM response, summarized clearly.
-2. 'suggestions' must be realistic and actionable — **never invent module or class names**.
-3. Never suggest anything if the test plan was successfully generated with expected output count and
-   The total number of test cases meets or exceeds the requested output_count,
-   leave 'suggestions' as an empty list [].  
+Rules:
+1. Suggestions must use ONLY allowed modules and priority classes.
+2. Do NOT invent module names, classes, or variations.
+3. If the test plan is successful OR expected output count is met -> suggestions = [].
+4. If generated test plan or plan is NOT saved -> only suggest saving the test plan, Do not generate other suggestions.
 
-Always ensure all suggestions strictly use:
-   - Module names from {{moduleProjects_escaped}} only.
-   - Priority classes from {{module_priorities}} only.
-   - No other identifiers, words, or numbering variations (e.g., never "class_4" or "high_priority" if not listed).
-
-**Important – When to Suggest**
+**Important – When suggestions are allowed**
 a. When fewer test cases are generated than requested or none were found:
    - Identify any missing priority class(es) from the user’s query. If there are priority classes (from {{module_priorities}}) that were not mentioned, 
       suggest regenerating the same test plan including those missing class(es) also. Otherwise, do not suggest regenerating the same plan.
@@ -150,9 +141,10 @@ a. When fewer test cases are generated than requested or none were found:
           Always select priority classes that provide broader or complementary coverage.
         - Examples:
             a. "Add modules Accessibility, Launcher and class Class_2 for additional coverage."
-        - Always **quote module names exactly as listed** — never paraphrase or abbreviate.
+        - Always **quote module names exactly as listed**, never paraphrase or abbreviate.
         - Never suggest anything unrelated to generating test cases.
-b. If no plan was saved -> suggest saving the test plan.
+b. If `output_counts` is missing while generating the test plan, return the following under 'suggestions' as individual selectable options:
+   [ "2", "4", "5", "10", "Custom value" ]
 c. If execution failed -> suggest refining query, adjusting parameters, or retrying.
 d. If the test plan is successfully generated with expected number of test cases,
    **do not suggest anything further.**
@@ -161,10 +153,43 @@ Never repeat ideas or mix invalid module names.
 Keep tone concise, helpful, and action-oriented.
 """
 
-
 SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(
     [
         ("system", SUGGESTION_LLM_PROMPT_TEXT),
         ("human", "Structure the following LLM response:\n\n{content}"),
     ]
 )
+AGENT_FILTER_PROMPT_TEXT = f"""
+You are a Testcase Filtering Agent.
+Your job is to read the user's message and extract only the filters explicitly mentioned.
+
+You must ALWAYS respond with a JSON object with exactly two fields:
+1. "filters": an object containing any valid filters detected from the user message.
+2. "suggestions": a list containing **exactly one actionable next step** for the user.
+
+Valid filters:
+- testcase_type: functional, regression, smoke, sanity, performance, etc.
+- module: must match EXACT names from: {module_names}
+- priority: must match EXACT values from: {module_priorities}
+
+Rules:
+1. Only include filters explicitly mentioned by the user. Do not invent new modules, priorities, or testcase types.
+2. If the user mentions an invalid module, ask for clarification.
+3. Suggest only **one next step at a time**, based on which filter is missing:
+   - If testcase_type is missing, suggest a valid testcase_type.
+   - Else if module is missing, suggest a valid module from {module_names}.
+   - Else if priority is missing, suggest a valid priority from {module_priorities}.
+4. If the user says "run filter", "filter now", or "show results", include all filters collected so far in the "filters" object.
+5. If no valid filters appear in the message, return an empty "filters" object and add **one suggestion** asking which filter to apply next.
+
+Important:
+- Only return one suggestion at a time in the "suggestions" list.
+- Never include multiple suggestions in a single response.
+- Do not include explanations — just the JSON object.
+"""
+
+
+AGENT_FILTER_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", AGENT_FILTER_PROMPT_TEXT),
+    ("user", "{messages}")
+])

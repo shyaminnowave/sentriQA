@@ -8,7 +8,10 @@ class TestCaseScoreResult(BaseModel):
     """Result object containing score and breakdown"""
     testcase_id: int
     testcase_name: str
+    testcase_type: str
     total_score: Decimal
+    failure_rate : Decimal
+    defects : Decimal
     module: str
     priority: str
     risk_component: Decimal
@@ -65,4 +68,4 @@ class Session(BaseModel):
     modules: List[str]
     output_counts: int
     testcase_data: List[TestcaseData] = Field(default_factory=list)
-    status: Optional[str] = None
+    status: Optional[str]  = None

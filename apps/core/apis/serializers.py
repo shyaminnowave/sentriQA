@@ -2,9 +2,8 @@ import json
 from rest_framework import serializers
 from pathlib import Path
 from apps.core.models import TestCaseModel, Module, TestCaseMetric, TestPlan, TestScore, HistoryTestPlan, \
-    TestPlanSession, AISessionStore
-from apps.core.helpers import format_datetime
-from apps.core.helpers import get_priority_repr
+    TestPlanSession, AISessionStore, TestCaseScoreModel
+from apps.core.helpers import get_priority_repr, format_datetime
 
 
 class ModuleSerializer(serializers.ModelSerializer):
@@ -21,6 +20,13 @@ class TestcaseMetrixSerializer(serializers.ModelSerializer):
         exclude = ('created', 'modified', 'testcase')
 
 
+class TestcaseScoreSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = TestCaseScoreModel
+        fields = ('id', 'score')
+
+
 class TestcaseListSerializer(serializers.Serializer):
 
     id = serializers.IntegerField(read_only=True)
@@ -30,14 +36,31 @@ class TestcaseListSerializer(serializers.Serializer):
     testcase_type = serializers.CharField(max_length=200, read_only=True)
     status = serializers.CharField(max_length=200, read_only=True)
     metrics = TestcaseMetrixSerializer(many=True, read_only=True)
+    scores = serializers.SerializerMethodField()
+
+    def get_scores(self, instance):
+        # Get the latest score or all scores depending on your needs
+        score = instance.scores.first()
+        if score:
+            return {
+                'score': score.score,
+                'rpn_value': score.rpn_value,
+                'failure_rate': score.failure_rate,
+                'code_change': score.code_change,
+                'defect_density': score.defect_density,
+                'penality': score.penality,
+            }
+        return None
 
     def to_representation(self, instance):
         response = super().to_representation(instance)
         _data = response.pop('metrics', [])
-        response['score'] = 0
         for i in _data:
             for key, value in i.items():
                 response[key] = value
+        scores_data = response.pop('scores', None)
+        if scores_data:
+            response['score'] = scores_data['score']
         response['priority'] = get_priority_repr(instance.priority)
         response['testcase_type'] = instance.testcase_type.capitalize()
         response['status'] = instance.status.capitalize()
@@ -120,7 +143,10 @@ class SessionSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     version = serializers.CharField()
     status = serializers.CharField()
+    created = serializers.SerializerMethodField(source='created')
 
+    def get_created(self, instance):
+        return format_datetime(instance.created)
 
 class TestplanSessionSerializer(serializers.Serializer):
 
@@ -286,15 +312,17 @@ class ScoreSerializer(serializers.ModelSerializer):
 
     modules = serializers.CharField(source='testcases.module.name', read_only=True)
     priority = serializers.CharField(source='testcases.priority', read_only=True)
+    testcase_type = serializers.CharField(source='testcases.testcase_type', read_only=True)
 
     class Meta:
         model = TestScore
-        fields = ('id', 'testcases', 'testplan', 'mode', 'testscore', 'modules', 'priority')
+        fields = ('id', 'testcases', 'testplan', 'mode', 'testscore', 'modules', 'priority', 'testcase_type')
 
     def to_representation(self, instance):
         represent = super().to_representation(instance)
         represent['testcase_id'] = instance.testcases.id
-        represent['testcase_name'] = instance.testcases.name
+        represent['name'] = instance.testcases.name
+        represent['testcase_type'] = instance.testcases.testcase_type
         represent['testcase'] = instance.testcases.name
         represent['testplan'] = instance.testplan.name
         represent['generated'] = True
@@ -396,6 +424,7 @@ class PlanSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         represent = super().to_representation(instance)
         represent['modules'] = [i.name for i in instance.modules.all()]
+        represent['testcase_type'] = 'Functional'
         represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
         represent['created'] = format_datetime(instance.created)
         represent['modified'] = format_datetime(instance.modified)
