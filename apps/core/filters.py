@@ -1,5 +1,6 @@
 import django_filters
-from apps.core.models import TestCaseMetric, TestCaseModel
+from django.db.models import Q
+from apps.core.models import TestCaseMetric, TestCaseModel, Module
 
 
 class TestcaseFilter(django_filters.rest_framework.FilterSet):
@@ -14,6 +15,7 @@ class TestcaseFilter(django_filters.rest_framework.FilterSet):
         fields = ['name', 'priority', 'testcase_type', 'feature']
 
     def filter_priority(self, queryset, name, value):
+        print('value', value)
         if ',' in value:
             priorities = value.split(',')
             return queryset.filter(priority__in=priorities)
@@ -26,7 +28,23 @@ class TestcaseFilter(django_filters.rest_framework.FilterSet):
         return queryset.filter(testcase_type__icontains=value)
     
     def filter_feature(self, queryset, name, value):
+        print('value_feature', value)
+        names = []
+        ids = []
         if ',' in value:
             features = value.split(',')
-            return queryset.filter(module__id__in=features)
-        return queryset.filter(module__id__icontains=value)
+            for item in features:
+                if item.isdigit():
+                    ids.append(int(item))
+                else:
+                    names.append(item)
+            if names:
+                return queryset.filter(module__name__in=names)
+            if ids:
+                return queryset.filter(module__name__in=ids)
+        else:
+            if names:
+                return queryset.filter(module__name__icontains=value)
+            if ids:
+                return queryset.filter(module__name__icontains=value)
+        return queryset.filter(module__name__icontains=value)

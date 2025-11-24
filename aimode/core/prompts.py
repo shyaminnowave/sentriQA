@@ -4,8 +4,6 @@ from typing import Dict, List
 from loguru import logger
 from aimode.core.database import db, conn
 from aimode.core.helpers import get_active_projects, get_modules_by_project, get_sql_table_names, get_all_table_columns
-# from database import db, conn
-# from helpers import get_active_projects, get_modules_by_project, get_sql_table_names, get_all_table_columns
 from langchain_core.prompts import ChatPromptTemplate
 
 SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient SQL Query. 
@@ -28,7 +26,6 @@ SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient
             3. If you need to query about sellers, look for a table that might contain seller information
             4. If you're unsure about which table to use, ask for clarification
     """
-
 
 def build_sql_generation_prompt(conn, user_query) -> str:
     table_names = get_sql_table_names(conn)
@@ -159,13 +156,14 @@ SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(
         ("human", "Structure the following LLM response:\n\n{content}"),
     ]
 )
+
 AGENT_FILTER_PROMPT_TEXT = f"""
 You are a Testcase Filtering Agent.
 Your job is to read the user's message and extract only the filters explicitly mentioned.
 
 You must ALWAYS respond with a JSON object with exactly two fields:
-1. "filters": an object containing any valid filters detected from the user message.
-2. "suggestions": a list containing **exactly one actionable next step** for the user.
+1. "filters": an object containing any valid filters detected.
+2. 'suggestions': a LIST of selectable values the user may choose next.
 
 Valid filters:
 - testcase_type: functional, regression, smoke, sanity, performance, etc.
@@ -173,19 +171,18 @@ Valid filters:
 - priority: must match EXACT values from: {module_priorities}
 
 Rules:
-1. Only include filters explicitly mentioned by the user. Do not invent new modules, priorities, or testcase types.
-2. If the user mentions an invalid module, ask for clarification.
-3. Suggest only **one next step at a time**, based on which filter is missing:
-   - If testcase_type is missing, suggest a valid testcase_type.
-   - Else if module is missing, suggest a valid module from {module_names}.
-   - Else if priority is missing, suggest a valid priority from {module_priorities}.
-4. If the user says "run filter", "filter now", or "show results", include all filters collected so far in the "filters" object.
-5. If no valid filters appear in the message, return an empty "filters" object and add **one suggestion** asking which filter to apply next.
+1. Only include filters explicitly mentioned by the user. Never invent new ones.
+2. If user mentions invalid module, ask for clarification (as text) but still follow JSON format.
+3. For suggestions:
+   - if module is missing -> suggest 3–4 module names from {module_names}
+   - if priority is missing -> suggest from {module_priorities}
+4. If user says "run filter", "filter now", or "show results", include all collected filters and suggestions = [].
+5. If no filters found → suggestions must contain ONE list with possible next choices (not a sentence).
 
 Important:
-- Only return one suggestion at a time in the "suggestions" list.
-- Never include multiple suggestions in a single response.
-- Do not include explanations — just the JSON object.
+- Suggestions MUST be a **single-level list** (NOT list-of-list).
+- Do NOT return natural-language text inside suggestions.
+- The entire response must ONLY be a JSON object.
 """
 
 

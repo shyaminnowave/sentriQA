@@ -1,87 +1,100 @@
 import json
-from typing import Any, Dict
-# from langchain.schema import HumanMessage, SystemMessage
+from typing import Any, Dict, List
+from loguru import logger
+from pydantic import BaseModel
+
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import tool
+
 from aimode.core.llms import llm
 from apps.core.ai_filter import get_filtered_data
 from aimode.core.prompts import AGENT_FILTER_PROMPT_TEXT
-from loguru import logger
+
 
 session_states: Dict[str, Dict[str, Any]] = {}
 
-
 def get_session_state(session_id: str) -> Dict[str, Any]:
-    if session_id not in session_states:
-        session_states[session_id] = {
-            "filters": {},
-            "conversation_history": []
-        }
-    return session_states[session_id]
+    return session_states.setdefault(session_id, {
+        "filters": {},
+        "conversation_history": [],
+    })
 
 
 def parse_json_from_llm(content: str) -> Dict[str, Any]:
     try:
         if "```json" in content:
-            content = content.split("```json")[-1].split("```")[0].strip()
+            content = content.split("```json", 1)[1].split("```", 1)[0].strip()
         return json.loads(content)
-    except json.JSONDecodeError:
-        logger.error(f"Failed to parse JSON from LLM: {content}")
-        return {}
+    except Exception:
+        logger.error(f"Failed to parse JSON:\n{content}")
+        return {"filters": {}, "suggestions": []}
 
 
-def merge_filters(existing: Dict[str, Any], new_filters: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Merge filters detected by LLM into session state dynamically. Converts strings to lists and deduplicates.
-    """
-    for key, values in new_filters.items():
-        if values:
-            if isinstance(values, str):
-                values = [values]
-            existing[key] = list(set(existing.get(key, []) + values))
-    return existing
+# def merge_filters(existing: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+#     for key, values in new.items():
+#         if not values:
+#             continue
+
+#         if isinstance(values, str):
+#             values = [values]
+
+#         existing.setdefault(key, [])
+#         existing[key] = list(set(existing[key] + values))
+
+#     return existing
+
+
+class FilterArgs(BaseModel):
+    filters: Dict[str, List[str]]
+
+@tool(description="filter_testcases_tool", args_schema=FilterArgs)
+def filter_testcases_tool(filters: Dict[str, List[str]]):
+    logger.debug(f"filtering with: {filters}")
+    return get_filtered_data(filters)
+
 
 
 def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
     state = get_session_state(session_id)
-    filters = state["filters"]
 
-    logger.info(f"[Session {session_id}] User message: {user_message}")
     state["conversation_history"].append(HumanMessage(content=user_message))
 
-    messages = [SystemMessage(content=AGENT_FILTER_PROMPT_TEXT)] + state["conversation_history"]
+    messages = [
+        SystemMessage(content=AGENT_FILTER_PROMPT_TEXT),
+        *state["conversation_history"]
+    ]
 
-    response = llm(messages)
-    raw_content = getattr(response, "content", str(response)).strip()
-    logger.info(raw_content)
+    response = llm.bind_tools([filter_testcases_tool]).invoke(messages)
+
+    raw_content = (getattr(response, "content", None) or str(response)).strip()
+    logger.info(f"[LLM] {raw_content}")
+
     state["conversation_history"].append(SystemMessage(content=raw_content))
 
-    parsed_data = parse_json_from_llm(raw_content)
-    llm_filters = parsed_data.get("filters", {})
-    suggestions = parsed_data.get("suggestions", [])
-    has_new_filters = any(v for v in llm_filters.values())
-    if has_new_filters:
-        filters = merge_filters(filters, llm_filters)
-        state["filters"] = filters
+    parsed = parse_json_from_llm(raw_content)
+    new_filters = parsed.get("filters", {})
+    suggestions = parsed.get("suggestions", [])
 
-    logger.info(f"[Session {session_id}] Accumulated filters: {filters}")
-
-    content_dict: Dict[str, Any] = {
-        "content": raw_content,
-        "tcs_data": None,
-        "suggestions": suggestions,
-        "filters": llm_filters,
-    }
-    logger.info(f"PAST")
-    if has_new_filters:
-        results = get_filtered_data(filters)
-        results.pop('test_repo') if results.get('test_repo') else None
-        content_dict["tcs_data"] = results
-        content_dict["content"] = "Testcases have been filtered as per your requirements."
-        content_dict["filters"] = llm_filters
+    has_new = any(new_filters.values())
+    logger.debug(has_new)
+    if has_new:
+        # state["filters"] = merge_filters(state["filters"], new_filters)
+        state["filters"] = new_filters
+        user_content = "Testcases have been filtered as per your requirements."
     else:
-        # No new filters -> conversational response only
-        content_dict["content"] = "Please provide testtype, module or priority classes"
+        if suggestions:
+            user_content = "Hi, I can help you with filtering the testcases. Please select one of the suggested options."
+        else:
+            user_content = "Hi, I can help you with filtering the testcases. Please specify filter to continue."
 
-    content_dict["suggestions"] = suggestions
-    logger.success(content_dict)
-    return content_dict
+    logger.info(f"[Session {session_id}] Filters -> {state['filters']}")
+
+    result = {
+        "content": user_content,
+        "filters": state["filters"],
+        "tcs_data": get_filtered_data(state["filters"]) if has_new else None,
+        "suggestions": suggestions,
+        }
+
+    logger.success(result)
+    return result

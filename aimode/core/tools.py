@@ -44,56 +44,6 @@ def get_current_user_prompt() -> Optional[str]:
 class SQLQueryGeneratorInput(BaseModel):
     user_query: str
 
-@tool(description="Filter the testcases")
-def filter_testcases_tool(messages: List[Dict], state: Dict):
-    # Render the SYSTEM + MESSAGES via ChatPromptTemplate
-    logger.debug("filter")
-    prompt = AGENT_FILTER_PROMPT.format_messages(messages=messages)
-    llm_response = llm.invoke(prompt)
-    content = llm_response.content.strip()
-
-    # --- Try JSON parse (final answer) ---
-    try:
-        text = content
-        if "```json" in text:
-            text = text.split("```json")[-1].split("```")[0]
-
-        data = json.loads(text)
-
-        # Require modules + priority (test_type optional)
-        if "modules" in data and "priority" in data:
-
-            # Update slot state
-            state["test_type"] = data.get("test_type")
-            state["modules"] = data["modules"]
-            state["priority"] = data["priority"]
-
-            logger.success("[filter_testcases_tool] Slot fill completed.")
-
-            return {
-                "status": status.HTTP_200_OK,
-                "message": "complete",
-                "is_complete": True,
-                "data": data,
-                "state": state,
-                "assistant": None,
-            }
-
-    except Exception:
-        pass
-
-    # --- Not complete → The LLM is asking next question ---
-    logger.info("[filter_testcases_tool] Asking next question.")
-
-    return {
-        "status": status.HTTP_200_OK,
-        "message": "continue",
-        "is_complete": False,
-        "data": None,
-        "state": state,
-        "assistant": content,  # this is the assistant's question
-    }
-
 @tool(description="Saves the last generated test plan version to the database.")
 def save_new_testplan_version():
     try:

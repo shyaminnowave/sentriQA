@@ -1,6 +1,7 @@
 import openpyxl
 from django.http import HttpResponse
 from rest_framework import generics
+from rest_framework.validators import qs_filter
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -39,6 +40,20 @@ class ModuleAPIView(generics.ListAPIView):
     serializer_class = ModuleSerializer
     queryset = Module.objects.all()
 
+
+class SearchTestcaseModel(generics.GenericAPIView):
+
+    serializer_class = TestcaseListSerializer
+
+    def get_queryset(self):
+        queryset = (TestCaseModel.objects.select_related('module').prefetch_related('metrics', 'scores').all())
+        return queryset
+
+    def get(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return Response(serializer.data)
+
+
 @extend_schema(tags=["Testcase List API"])
 class TestCaseList(c.CustomListCreateAPIView):
 
@@ -47,6 +62,7 @@ class TestCaseList(c.CustomListCreateAPIView):
         sort_by = self.request.query_params.get('sort_by', None)
         order_by = self.request.query_params.get('order_by', None)
         search = self.request.query_params.get('search', None)
+        print('testing')
         field_mapping = {
             'feature': 'module__name',
             'score':   'scores__score',
@@ -66,8 +82,11 @@ class TestCaseList(c.CustomListCreateAPIView):
             if order_by == 'desc':
                 sort_by = f'-{actual_field}'
             queryset = queryset.order_by(actual_field)
-        if search:
-            queryset = queryset.filter(Q(name__icontains=search) | Q(id__iexact=search))
+        # if search:
+        #     if search.isdigit():
+        #         queryset = queryset.filter(Q(name__icontains=search) | Q(id__iexact=search))
+        #     else:
+        #         queryset = queryset.filter(name__icontains=search)
         return queryset
 
     pagination_class = CustomPagination
@@ -444,20 +463,22 @@ class AITestCaseFilterChat(generics.GenericAPIView):
 
             response_dict = run_filter_flow(user_msg, session)
             response_dict['session_id'] = session
+            print('testings', response_dict['tcs_data'])
 
             if response_dict.get('tcs_data', None):
                 response_dict['chat_generated'] = True
 
                 # Your data is a list of dicts like:
                 # [{'id': 2, 'name': '...', 'priority': '...', ...}, {...}, ...]
-                serialized_data = response_dict['tcs_data']['tcs']
 
+                serialized_data = response_dict['tcs_data']['tcs']
+                filter_value = response_dict.get('filters', [])
                 # Paginate the list
                 page = self.paginate_queryset(serialized_data)
-
+                print('serialized_data', filter_value)
                 if page is not None:
                     # Get paginated response
-                    paginated_response = self.get_paginated_response(page)
+                    paginated_response = self.paginator.get_paginated_response(page, filter_value)
                     response_dict['tcs_data'].pop('tcs')
                     response_dict['tcs_data'] = paginated_response.data
                 else:

@@ -7,6 +7,7 @@ urlpatterns = [
     path('', views.TestCaseList.as_view(), name='testcase-list'),
     path('testcase', views.TestCaseView.as_view(), name='testcase'),
     path('testcase/<int:pk>', views.TestCaseDetail.as_view(), name='testcase-detail'),
+    path('search/testcase', views.SearchTestcaseModel.as_view(), name='search-testcase'),
 
     # module API
     path('module/', views.ModuleAPIView.as_view(), name='module-list'),
