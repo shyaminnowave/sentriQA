@@ -31,8 +31,9 @@ class JiraGetTestcase(APIView):
             jira_username=os.environ.get('JIRA_USERNAME'),
             jira_password=os.environ.get('JIRA_API_KEY'),
         )
+        project_key = self.kwargs.get('project')
         query = {
-            'jql': f'project = {self.kwargs.get('project')} AND type = Test',
+            'jql': f'project = {project_key} AND type = Test',
             'fields': 'summary,status,assignee,created,updated,priority,description',
         }
         print(query)
@@ -52,8 +53,9 @@ class JiraGetIssue(APIView):
             jira_username=os.environ.get('JIRA_USERNAME'),
             jira_password=os.environ.get('JIRA_API_KEY'),
         )
+        project_key = self.kwargs.get('project')
         query = {
-            'jql': f'project = {self.kwargs.get('project')}',
+            'jql': f'project = {project_key}',
             'fields': 'summary',
         }
         testcases = client.get_issues(query)
