@@ -45,5 +45,5 @@ urlpatterns = [
     path('testing', views.GenerateScoreView.as_view(), name='test'),
     path('plan-history/<int:id>', views.TestPlanHistoryView.as_view(), name='plan-history'),
     path('plan-history/<int:id>/<int:history_id>', views.HistoryPlanDetailsView.as_view(), name='plan-history'),
-    path('testing-graph/<slug:session_id>/<int:version>', views.GetModuleGraph.as_view(), name='test-graph'),
+    path('version/metrics/graph/<slug:session_id>/<int:version>', views.GetModuleGraph.as_view(), name='test-graph'),
 ]

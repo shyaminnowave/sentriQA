@@ -19,12 +19,14 @@ from django.urls import path, include, re_path
 from django.views.generic import TemplateView
 from django.conf import settings
 from django.conf.urls.static import static
+from sentriQA.helpers.swagger import MainSchemaView, JiraSchemaView, MainAppsSwaggerView, JiraSwaggerView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    # main swagger
+    path('api/main/schema/', MainSchemaView.as_view(), name='schema'),
+    path('api/schema/swagger-ui/', MainAppsSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path("api/", include("apps.core.apis.urls")),
     path("api/jira/", include("apps.jira_integrations.urls")),
     re_path(r"^.*$", TemplateView.as_view(template_name="index.html")),

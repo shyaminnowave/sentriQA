@@ -151,6 +151,7 @@ class TestPlanSession(TimeStampedModel):
     session = models.ForeignKey(AISessionStore, on_delete=models.CASCADE, related_name='sessions', blank=True, null=True)
     context = models.TextField(_('Context'), blank=True, null=True)
     version = models.CharField(_('Version'), max_length=255, blank=True, null=True)
+    version_info = models.TextField(_('Version Info'), blank=True, null=True)
     name = models.CharField(_('Name'), max_length=255)
     description = models.TextField(_('Description'), blank=True, null=True)
     modules = models.ManyToManyField(Module, blank=True, related_name='generated_modules', null=True)

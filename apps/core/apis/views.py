@@ -594,9 +594,8 @@ class HistoryPlanDetailsView(c.CustomRetrieveAPIVIew):
 class GetModuleGraph(APIView):
 
     def get(self, request, *args, **kwargs):
-        print('testing')
-        session_id = self.kwargs.get('session_id', "bee7b4fb-5b49-44d4-aea8-e60450c2a8f0")
-        version_id = self.kwargs.get('version', 5)
+        session_id = self.kwargs.get('session_id', None)
+        version_id = self.kwargs.get('version', None)
         queryset = get_object_or_404(
             TestPlanSession,
             session_id=session_id,
@@ -604,6 +603,9 @@ class GetModuleGraph(APIView):
         )
         modules_data = {}
         priority_data = {}
+        version_info = queryset.version_info
+        print('version_info', version_info)
+        # serializer = TestplanSessionSerializer(queryset)
         for data in queryset.testcase_data:
             for key, value in data.items():
                 if key == 'modules':
@@ -620,6 +622,7 @@ class GetModuleGraph(APIView):
             {
                 "success": True,
                 "data": {
+                    "version_info": version_info,
                     "modules": modules_data,
                     "priority": priority_data,
                 },

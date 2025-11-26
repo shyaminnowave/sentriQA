@@ -1,5 +1,4 @@
 import json
-from typing import Dict, List, Any
 from langchain_core.messages import HumanMessage
 from loguru import logger
 from aimode.core.llms import llm
@@ -37,6 +36,8 @@ def modify_testplan(session_id: str, add_data: bool, tcs_list: list):
     - Check if added testcases improve coverage.
     - Check if deleted testcases remove essential coverage.
     - Detect redundancy removal (good) or missing coverage (bad).
+    - If added testcases belong to modules that were not part of the original test plan, briefly inform the user. Explain how this impacts the test plan.
+        - Explain the impact: whether it expands coverage (positive) or deviates from the intended module scope (potential issue).
     - Provide a clear verdict.
     - DO NOT rewrite or generate testcases.
 

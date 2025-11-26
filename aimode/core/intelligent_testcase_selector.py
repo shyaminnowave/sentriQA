@@ -14,7 +14,7 @@ from aimode.core.llms import llm
 
 
 def intelligent_testcase_selector(user_query: str, module_names: List[str], priority: List[str], output_counts: int, session_id: str):
-    logger.info(f"[START] intelligent_testcase_selector | session={session_id}, modules={module_names}, priority={priority}")
+    logger.info(f"intelligent_testcase_selector | session={session_id}, modules={module_names}, priority={priority}")
 
     # Step 1:module IDs
     module_ids = list(Module.objects.filter(name__in=module_names).values_list('id', flat=True))
@@ -41,7 +41,6 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         logger.info("Fetching candidate testcases from scoring engine...")
         score_data = generate_score(payload)
         testcases = score_data.get("data", {}).get("testcases", [])
-        logger.debug(testcases)
         logger.info(f"Retrieved {len(testcases)} candidate testcases.")
 
         if not testcases:
@@ -104,6 +103,42 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
             "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "message": "Error during intelligent selection. Please retry.",
         }
+    warning=""
+    warning_prompt = f"""
+    You are a Senior QA Analyst.
+
+    Evaluate whether the number of test cases requested by the user ({output_counts}) 
+    and the selected testcases {selected_cases}
+    are sufficient to cover the risks of the selected modules.
+
+    You must generate a warning if:
+    - the user-requested test count is too low for meaningful risk coverage, OR
+    - the selected testcases miss important risk areas or seem insufficient.
+
+    The warning must:
+    - Be a single short sentence suitable as a heading
+    - Not mention module names or numbers
+    - Convey that the test count or coverage is insufficient
+    - Suggest increasing the test count
+
+    If coverage appears adequate, return an empty string.
+
+    Output ONLY the warning or an empty string.
+    """
+
+    try:
+        warning_response = llm.invoke(warning_prompt)
+
+        warning = getattr(warning_response, "content", str(warning_response)).strip()
+        warning = warning.replace("```", "").strip()  
+        warning = warning.strip('"')  
+        warning = " ".join(warning.split()) 
+        logger.success(warning)
+
+    except Exception as e:
+        logger.error(f"Warning generation failed: {e}")
+        warning = ""
+
 
     # Step 4: Generate separate reasoning summary
     reasoning = []
@@ -169,6 +204,7 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         "generate_test_count": len(selected_cases),
         "testcase_type": "functional",
         "testcases": selected_cases, 
+        "warning": warning,
     }
 
     final_response = {

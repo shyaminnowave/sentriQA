@@ -57,6 +57,8 @@ class TestcaseSearchSerializer(serializers.Serializer):
         represent = super().to_representation(instance)
         represent['priority'] = get_priority_repr(instance.priority)
         represent['testcase_type'] = instance.testcase_type.capitalize()
+        represent['generated'] = False
+        represent['mode'] = 'classic'
         return represent
 
 
@@ -188,6 +190,7 @@ class TestplanSessionSerializer(serializers.Serializer):
     session = serializers.CharField(max_length=200)
     context = serializers.CharField()
     version = serializers.CharField(max_length=200)
+    version_info = serializers.CharField()
     name = serializers.CharField()
     description = serializers.CharField()
     modules = serializers.ListSerializer(child=serializers.CharField(max_length=255), max_length=255)

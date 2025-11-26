@@ -10,9 +10,7 @@ from aimode.core.llms import llm
 from apps.core.ai_filter import get_filtered_data
 from aimode.core.prompts import AGENT_FILTER_PROMPT_TEXT
 
-
 session_states: Dict[str, Dict[str, Any]] = {}
-
 def get_session_state(session_id: str) -> Dict[str, Any]:
     return session_states.setdefault(session_id, {
         "filters": {},
@@ -37,7 +35,6 @@ class FilterArgs(BaseModel):
 def filter_testcases_tool(filters: Dict[str, List[str]]):
     logger.debug(f"filtering with: {filters}")
     return get_filtered_data(filters)
-
 
 
 def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
