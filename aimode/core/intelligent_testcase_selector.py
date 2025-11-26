@@ -204,7 +204,7 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         "generate_test_count": len(selected_cases),
         "testcase_type": "functional",
         "testcases": selected_cases, 
-        "warning": warning,
+        "version_info": warning,
     }
 
     final_response = {

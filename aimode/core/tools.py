@@ -178,8 +178,7 @@ def generate_testplan(
         if should_save:
             testcases = tcs_data.get("data", {}).get("testcases", [])
             reasoning = tcs_data.get("data", {}).get("selection_reasoning", [])
-            warning = tcs_data.get("data", {}).get("warning", [])
-            logger.info(warning)
+            version_info = tcs_data.get("data", {}).get("version_info", [])
             if not testcases:
                 logger.warning("No testcases generated — skipping version save.")
                 should_save = False
@@ -194,7 +193,7 @@ def generate_testplan(
                     "modules": module_names,
                     "output_counts": output_counts,
                     "testcase_data": testcases,
-                    "version_info": warning,
+                    "version_info": version_info,
                 }
                 save_version(save_data)
                 tcs_data["data"]["version_saved"] = next_version

@@ -61,6 +61,104 @@ class TestcaseSearchSerializer(serializers.Serializer):
         represent['mode'] = 'classic'
         return represent
 
+class MetricsSerializer(serializers.Serializer):
+
+    likelihood = serializers.CharField(max_length=200, read_only=True)
+    impact = serializers.CharField(max_length=200, read_only=True)
+    failure_rate = serializers.DecimalField(default=0, max_digits=5, decimal_places=2)
+    failure = serializers.CharField(max_length=200, read_only=True)
+    total_runs = serializers.IntegerField(default=0, read_only=True)
+    direct_impact = serializers.IntegerField(default=0, read_only=True)
+    defects = serializers.IntegerField(default=0, read_only=True)
+    severity = serializers.IntegerField(default=0, read_only=True)
+    feature_size = serializers.IntegerField(default=0, read_only=True)
+    execution_time = serializers.IntegerField(default=0, read_only=True)
+
+class ScoreSerializer(serializers.Serializer):
+
+    score = serializers.DecimalField(default=0, max_digits=5, decimal_places=2)
+
+class TestcaseFilterSerializer(serializers.Serializer):
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    priority = serializers.CharField(read_only=True)
+    feature = serializers.CharField(source='module.name', read_only=True)
+    testcase_type = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+
+    likelihood = serializers.SerializerMethodField()
+    impact = serializers.SerializerMethodField()
+    failure_rate = serializers.SerializerMethodField()
+    failure = serializers.SerializerMethodField()
+    total_runs = serializers.SerializerMethodField()
+    direct_impact = serializers.SerializerMethodField()
+    defects = serializers.SerializerMethodField()
+    severity = serializers.SerializerMethodField()
+    feature_size = serializers.SerializerMethodField()
+    execution_time = serializers.SerializerMethodField()
+
+    score = serializers.SerializerMethodField()
+
+    # ----------------------------
+    # helpers pulling from prefetched data
+    # ----------------------------
+    def _metric(self, obj):
+        return obj.prefetched_metrics[0] if getattr(obj, "prefetched_metrics", None) else None
+
+    def _score(self, obj):
+        return obj.prefetched_scores[0] if getattr(obj, "prefetched_scores", None) else None
+
+    # ----------------------------
+    # metric fields
+    # ----------------------------
+    def get_likelihood(self, obj):
+        m = self._metric(obj)
+        return m.likelihood if m else None
+
+    def get_impact(self, obj):
+        m = self._metric(obj)
+        return m.impact if m else None
+
+    def get_failure_rate(self, obj):
+        m = self._metric(obj)
+        return m.failure_rate if m else None
+
+    def get_failure(self, obj):
+        m = self._metric(obj)
+        return m.failure if m else None
+
+    def get_total_runs(self, obj):
+        m = self._metric(obj)
+        return m.total_runs if m else None
+
+    def get_direct_impact(self, obj):
+        m = self._metric(obj)
+        return m.direct_impact if m else None
+
+    def get_defects(self, obj):
+        m = self._metric(obj)
+        return m.defects if m else None
+
+    def get_severity(self, obj):
+        m = self._metric(obj)
+        return m.severity if m else None
+
+    def get_feature_size(self, obj):
+        m = self._metric(obj)
+        return m.feature_size if m else None
+
+    def get_execution_time(self, obj):
+        m = self._metric(obj)
+        return m.execution_time if m else None
+
+    # ----------------------------
+    # score field
+    # ----------------------------
+    def get_score(self, obj):
+        s = self._score(obj)
+        return s.score if s else None
+
 
 class TestcaseListSerializer(serializers.Serializer):
 
@@ -242,9 +340,11 @@ class CreateTestPlanSerializer(serializers.Serializer):
                 testcase_name = tc.get('testcase')
                 testcase_score = tc.get('testscore', 0)
                 mode=tc.get('mode')
+                print('testcase', testcase_name)
                 if testcase_name:
                     try:
                         testcase_obj = TestCaseModel.objects.get(name=testcase_name)
+                        print('testcase_obj', testcase_obj)
                         TestScore.objects.create(
                             testplan=testplan,
                             testcases=testcase_obj,
@@ -466,7 +566,7 @@ class PlanSerializer(serializers.ModelSerializer):
         represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
         represent['created'] = format_datetime(instance.created)
         represent['modified'] = format_datetime(instance.modified)
-        represent['modes'] = instance.modes.upper()
+        represent['modes'] = instance.modes if instance.modes else ''
         return represent
 
 

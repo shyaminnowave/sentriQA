@@ -24,9 +24,8 @@ class TestCasePagination(PageNumberPagination):
     max_page_size = 100
 
     def remove_last_path_segment(self, url: str) -> str:
-        print('page', self.get_next_link())
         path = str(url)
-        us = path.split('?')
+        us = path.split('?') if '?' in path else [path]
         if 'http://127.0.0.1:8000/api/' in us[0]:
             return "http://127.0.0.1:8000/api/?" + us[-1]
         return "https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/?" + us[-1]

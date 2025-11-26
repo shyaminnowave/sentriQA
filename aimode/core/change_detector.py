@@ -9,6 +9,33 @@ from aimode.core.prompts import CHANGE_DETECTION_PROMPT
 # In-memory store for the last query per session
 LAST_QUERY_CACHE: Dict[str, str] = {}
 
+# class QueryChangeDetectorLLM:
+#     def should_save_version(self, current_query: str, session_id) -> bool:
+#         if session_id is None:
+#             logger.warning("No session_id provided to change detector!")
+#             session_id = "unknown_session"
+#         session_id_str = str(session_id).strip().lower()
+#
+#         logger.info(f"Evaluating query for session {session_id_str}: {current_query[:50]}...")
+#
+#         if self._user_requested_no_save(current_query):
+#             logger.info("User requested not to save this query. Skipping version creation.")
+#             LAST_QUERY_CACHE[session_id_str] = current_query
+#             return False
+#
+#         last_query = LAST_QUERY_CACHE.get(session_id_str)
+#         if last_query:
+#             logger.info(f"Last query (n-1th) for session {session_id_str}: {last_query[:50]}...")
+#             is_major = self._llm_decide_major_change(last_query, current_query)
+#         else:
+#             logger.info(f"No previous query in memory for session {session_id_str}. Treating as major change.")
+#             is_major = True
+#
+#         LAST_QUERY_CACHE[session_id_str] = current_query
+#         logger.info(f"Updated LAST_QUERY_CACHE for session {session_id_str}")
+#
+#         return is_major
+
 class QueryChangeDetectorLLM:
     def should_save_version(self, current_query: str, session_id) -> bool:
         if session_id is None:
@@ -23,18 +50,18 @@ class QueryChangeDetectorLLM:
             LAST_QUERY_CACHE[session_id_str] = current_query
             return False
 
-        last_query = LAST_QUERY_CACHE.get(session_id_str)
-        if last_query:
-            logger.info(f"Last query (n-1th) for session {session_id_str}: {last_query[:50]}...")
-            is_major = self._llm_decide_major_change(last_query, current_query)
-        else:
-            logger.info(f"No previous query in memory for session {session_id_str}. Treating as major change.")
-            is_major = True
+        # last_query = LAST_QUERY_CACHE.get(session_id_str)
+        # # if last_query:
+        # #     logger.info(f"Last query (n-1th) for session {session_id_str}: {last_query[:50]}...")
+        # #     is_major = self._llm_decide_major_change(last_query, current_query)
+        # # else:
+        # #     logger.info(f"No previous query in memory for session {session_id_str}. Treating as major change.")
+        # #     is_major = True
 
-        LAST_QUERY_CACHE[session_id_str] = current_query
-        logger.info(f"Updated LAST_QUERY_CACHE for session {session_id_str}")
+        # LAST_QUERY_CACHE[session_id_str] = current_query
+        # logger.info(f"Updated LAST_QUERY_CACHE for session {session_id_str}")
 
-        return is_major
+        return True
 
     def _user_requested_no_save(self, query: str) -> bool:
         no_save_phrases = [

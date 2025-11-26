@@ -473,7 +473,6 @@ class AITestCaseFilterChat(generics.GenericAPIView):
 
             response_dict = run_filter_flow(user_msg, session)
             response_dict['session_id'] = session
-            print('testings', response_dict['tcs_data'])
 
             if response_dict.get('tcs_data', None):
                 response_dict['chat_generated'] = True
@@ -481,11 +480,12 @@ class AITestCaseFilterChat(generics.GenericAPIView):
                 # Your data is a list of dicts like:
                 # [{'id': 2, 'name': '...', 'priority': '...', ...}, {...}, ...]
 
-                serialized_data = response_dict['tcs_data']['tcs']
+                serialized_data = response_dict['tcs_data'].get('tcs', {})
                 filter_value = response_dict.get('filters', [])
                 # Paginate the list
-                page = self.paginate_queryset(serialized_data)
-                print('serialized_data', filter_value)
+                page = None
+                if serialized_data:
+                    page = self.paginate_queryset(serialized_data)
                 if page is not None:
                     # Get paginated response
                     paginated_response = self.paginator.get_paginated_response(page, filter_value)
