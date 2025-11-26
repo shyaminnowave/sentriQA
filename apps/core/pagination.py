@@ -28,7 +28,7 @@ class TestCasePagination(PageNumberPagination):
         us = path.split('?')
         if 'http://127.0.0.1:8000/api/' in us[0]:
             return "http://127.0.0.1:8000/api/?" + us[-1]
-        return "https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/" + us[-1]
+        return "https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/?" + us[-1]
 
     def get_module(self, value):
         if value is None:
