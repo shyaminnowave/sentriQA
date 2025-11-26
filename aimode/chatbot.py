@@ -1,15 +1,22 @@
 import json, ast
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 from aimode.core.agent import graph
 from aimode.core.tools import get_last_generated_testplan
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
+from aimode.core.modify_testplan import modify_testplan
 from loguru import logger
 
 memory = MemorySaver()
 
-def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
+def get_llm_response(query: str, session_id: str,add_data: bool = False,tcs_list: List[Dict[str, Any]] = None) -> Dict[str, Any]:
     logger.info(f"get_llm_response called with session_id={session_id}, query={query}")
+    if tcs_list is not None:
+        return modify_testplan(
+            session_id=session_id,
+            add_data=add_data,
+            tcs_list=tcs_list,     
+        )
 
     config = {"configurable": {"thread_id": session_id}}
     state = {
@@ -17,8 +24,6 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
         "user_prompt": query,
         "session_id": session_id
     }
-
-    logger.info(f"Invoking graph with state keys: {list(state.keys())}")
 
     try:  
         messages = graph.invoke(state, config=config)
@@ -32,10 +37,8 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
     msgs = messages["messages"]
     last_human_index = max((i for i, m in enumerate(msgs) if isinstance(m, HumanMessage)), default=-1)
     last_after_human = msgs[last_human_index + 1:] if last_human_index >= 0 else []
-    # logger.info(f"last_after_human: {last_after_human}")
 
     raw_response = msgs[-1].content if hasattr(msgs[-1], "content") else str(msgs[-1])
-    # logger.info(f"Raw assistant content before filtering: {raw_response[:250]}")
 
     content_dict: Dict[str, Any] = {
         "content": raw_response,
@@ -45,8 +48,6 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
 
     for msg in last_after_human:
         if isinstance(msg, ToolMessage) and msg.name == "generate_testplan":
-        # if getattr(msg, "name", "") == "generate_testplan":
-            logger.info("Received tool output from generate_testplan (hidden from user).")
             raw_content = msg.content.strip()
             # if "error" not in raw_content.lower():
             if "success" in raw_content.lower():
@@ -104,13 +105,11 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
     if structured_dict:
         base_content = structured_dict.get("base_content") or msgs[-1].content
         suggestions = structured_dict.get("suggestions", [])
-        logger.info(f"Extracted structured suggestions: {suggestions}")
         if suggestions:
             existing = content_dict.get("suggestions", [])
             merged = list(dict.fromkeys(existing + suggestions))
             content_dict["suggestions"] = merged
         
-    # content_dict["tcs_data"] = get_last_generated_testplan(session_id)
     logger.info(f"Final tcs_data: {content_dict['tcs_data']}")
     if not content_dict.get("suggestions"):
         content_dict.pop("suggestions", None)
@@ -121,5 +120,4 @@ def get_llm_response(query: str, session_id: str) -> Dict[str, Any]:
 
     if not isinstance(data, dict) or not data.get("testcases"):
         content_dict.pop("tcs_data", None)
-
     return content_dict

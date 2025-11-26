@@ -26,7 +26,9 @@ class TestCasePagination(PageNumberPagination):
     def remove_last_path_segment(self, url: str) -> str:
         path = str(url)
         us = path.split('?')
-        return "http://127.0.0.1:8000/api/?" + us[-1]
+        if 'http://127.0.0.1:8000/api/' in us[0]:
+            return "http://127.0.0.1:8000/api/?" + us[-1]
+        return "https://sentri-qa-hea4embscubaejaw.eastasia-01.azurewebsites.net/api/" + us[-1]
 
     def get_module(self, value):
         if value is None:
@@ -83,6 +85,8 @@ class TestCasePagination(PageNumberPagination):
     def get_paginated_response(self, data, filter_value):
         response = super().get_paginated_response(data)
         page_count = math.ceil(response.data.get('count')/self.page_size)
+        base_url = f"{self.request.scheme}://{self.request.get_host()}"
+        print('base_url', base_url)
         filter_query = self.get_next_page(filter_value)
         get_next = self.get_next_link() if self.get_next_link() else None
         new_url = self.remove_last_path_segment(url=get_next)

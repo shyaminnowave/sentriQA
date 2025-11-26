@@ -1,6 +1,7 @@
 import openpyxl
 from django.http import HttpResponse
 from rest_framework import generics
+from rest_framework.generics import get_object_or_404
 from rest_framework.validators import qs_filter
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,7 +13,8 @@ from apps.core.apis.serializers import TestcaseListSerializer, FileUploadSeriali
     TestMetrixSerializer, ModuleSerializer, TestPlanSerializer, TestScoreSerializer, \
     TestCaseNameSerializer, CreateTestPlanSerializer, TestPlanningSerializer, PlanSerializer, TestCaseOptionSerializer, \
     TestCaseScoreSerializer, PlanHistorySerializer, MetrixSerializer, HistoryPlanDetailsSerializer, \
-    TestplanSessionSerializer, SessionSerializer, TestCaseSerializer, SearchTestCaseSerializer, PlanListSerializer
+    TestplanSessionSerializer, SessionSerializer, TestCaseSerializer, SearchTestCaseSerializer, PlanListSerializer, \
+    TestcaseSearchSerializer
 from apps.core.utils import QueryHelpers
 from django.db.models import Prefetch
 from django.db.models import Max, IntegerField
@@ -43,15 +45,21 @@ class ModuleAPIView(generics.ListAPIView):
 
 class SearchTestcaseModel(generics.GenericAPIView):
 
-    serializer_class = TestcaseListSerializer
+    serializer_class = TestcaseSearchSerializer
 
     def get_queryset(self):
-        queryset = (TestCaseModel.objects.select_related('module').prefetch_related('metrics', 'scores').all())
+        queryset = TestCaseModel.objects.select_related('module').prefetch_related(
+            'metrics'
+        ).only('id', 'name', 'priority', 'module__name', 'testcase_type')
         return queryset
 
     def get(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_queryset(), many=True)
-        return Response(serializer.data)
+        return Response({
+            "tcs_data": {
+                "testcases": serializer.data,
+            }
+        })
 
 
 @extend_schema(tags=["Testcase List API"])
@@ -62,7 +70,6 @@ class TestCaseList(c.CustomListCreateAPIView):
         sort_by = self.request.query_params.get('sort_by', None)
         order_by = self.request.query_params.get('order_by', None)
         search = self.request.query_params.get('search', None)
-        print('testing')
         field_mapping = {
             'feature': 'module__name',
             'score':   'scores__score',
@@ -82,11 +89,11 @@ class TestCaseList(c.CustomListCreateAPIView):
             if order_by == 'desc':
                 sort_by = f'-{actual_field}'
             queryset = queryset.order_by(actual_field)
-        # if search:
-        #     if search.isdigit():
-        #         queryset = queryset.filter(Q(name__icontains=search) | Q(id__iexact=search))
-        #     else:
-        #         queryset = queryset.filter(name__icontains=search)
+        if search:
+            if search.isdigit():
+                queryset = queryset.filter(Q(name__icontains=search) | Q(id__iexact=search))
+            else:
+                queryset = queryset.filter(name__icontains=search)
         return queryset
 
     pagination_class = CustomPagination
@@ -317,9 +324,12 @@ class AITestPlanningView(generics.GenericAPIView):
         if serializer.is_valid():
             user_msg = serializer.validated_data['user_msg']
             session = serializer.validated_data.get('session_id')
+            add_data = serializer.validated_data.get('add_data', None)
+            tcs_list = serializer.validated_data.get('tcs_list', None)
+            print('session_id:', session)
             if not session or session == "":
                 session = generate_session_id()
-            response_dict = get_llm_response(user_msg, session)
+            response_dict = get_llm_response(user_msg, session, add_data, tcs_list)
             response_dict['session_id'] = session
             if response_dict.get('tcs_data', None):
                 response_dict['chat_generated'] = True
@@ -579,3 +589,41 @@ class HistoryPlanDetailsView(c.CustomRetrieveAPIVIew):
     def get_object(self):
         queryset = HistoryTestPlan.objects.get(id=self.kwargs['history_id'])
         return queryset
+
+
+class GetModuleGraph(APIView):
+
+    def get(self, request, *args, **kwargs):
+        print('testing')
+        session_id = self.kwargs.get('session_id', "bee7b4fb-5b49-44d4-aea8-e60450c2a8f0")
+        version_id = self.kwargs.get('version', 5)
+        queryset = get_object_or_404(
+            TestPlanSession,
+            session_id=session_id,
+            version=version_id
+        )
+        modules_data = {}
+        priority_data = {}
+        for data in queryset.testcase_data:
+            for key, value in data.items():
+                if key == 'modules':
+                    if modules_data.get(value) is None:
+                        modules_data[value] = 1
+                    else:
+                        modules_data[value] += 1
+                if key == 'priority':
+                    if priority_data.get(value, None) is None:
+                        priority_data[value] = 1
+                    else:
+                        priority_data[value] += 1
+        return Response(
+            {
+                "success": True,
+                "data": {
+                    "modules": modules_data,
+                    "priority": priority_data,
+                },
+                "status_code": status.HTTP_200_OK,
+                "message": "Success"
+            }
+        )

@@ -49,7 +49,6 @@ def save_new_testplan_version():
     try:
         testplan_data = get_last_generated_testplan()
         session_id = get_current_session_id()
-        # testplan_data = get_last_generated_testplan(session_id)
 
         if not testplan_data:
             logger.warning("No last test plan found.")
@@ -83,7 +82,6 @@ def save_new_testplan_version():
         "message": f"Test plan saved as version {next_version}", "version_saved": next_version,
             }
         return final_response
-        # return {"status": 200, "message": f"Test plan saved as version {next_version}", "version_saved": next_version}
 
     except Exception as e:
         logger.error(f"Error saving version: {e}")
@@ -207,6 +205,4 @@ def generate_testplan(
     except Exception as e:
         logger.error(f"Error handling test plan version: {e}")
     set_last_generated_testplan(tcs_data)
-    # set_last_generated_testplan(tcs_data, session_id)
-
     return tcs_data

@@ -30,20 +30,6 @@ def parse_json_from_llm(content: str) -> Dict[str, Any]:
         return {"filters": {}, "suggestions": []}
 
 
-# def merge_filters(existing: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
-#     for key, values in new.items():
-#         if not values:
-#             continue
-
-#         if isinstance(values, str):
-#             values = [values]
-
-#         existing.setdefault(key, [])
-#         existing[key] = list(set(existing[key] + values))
-
-#     return existing
-
-
 class FilterArgs(BaseModel):
     filters: Dict[str, List[str]]
 
@@ -78,18 +64,18 @@ def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
     has_new = any(new_filters.values())
     logger.debug(has_new)
     if has_new:
-        # state["filters"] = merge_filters(state["filters"], new_filters)
         state["filters"] = new_filters
         user_content = "Testcases have been filtered as per your requirements."
     else:
         if suggestions:
             user_content = "Hi, I can help you with filtering the testcases. Please select one of the suggested options."
         else:
-            user_content = "Hi, I can help you with filtering the testcases. Please specify filter to continue."
+            user_content = raw_content
 
     logger.info(f"[Session {session_id}] Filters -> {state['filters']}")
 
     result = {
+        "session": session_id,
         "content": user_content,
         "filters": state["filters"],
         "tcs_data": get_filtered_data(state["filters"]) if has_new else None,

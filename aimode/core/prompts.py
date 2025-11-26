@@ -172,7 +172,7 @@ Valid filters:
 
 Rules:
 1. Only include filters explicitly mentioned by the user. Never invent new ones.
-2. If user mentions invalid module, ask for clarification (as text) but still follow JSON format.
+2. If user mentions invalid module, ask for clarification (as text) and suggest correct module name but still follow JSON format.
 3. For suggestions:
    - if module is missing -> suggest 3–4 module names from {module_names}
    - if priority is missing -> suggest from {module_priorities}
@@ -185,8 +185,3 @@ Important:
 - The entire response must ONLY be a JSON object.
 """
 
-
-AGENT_FILTER_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", AGENT_FILTER_PROMPT_TEXT),
-    ("user", "{messages}")
-])

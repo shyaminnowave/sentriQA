@@ -1,4 +1,6 @@
 import json
+
+from openai.types.fine_tuning.jobs.fine_tuning_job_checkpoint import Metrics
 from rest_framework import serializers
 from pathlib import Path
 from apps.core.models import TestCaseModel, Module, TestCaseMetric, TestPlan, TestScore, HistoryTestPlan, \
@@ -25,6 +27,37 @@ class TestcaseScoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = TestCaseScoreModel
         fields = ('id', 'score')
+
+
+class TestcaseSearchSerializer(serializers.Serializer):
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    priority = serializers.CharField(read_only=True)
+    testcase_type = serializers.CharField(read_only=True)
+    modules = serializers.CharField(source='module.name', read_only=True)
+    defects = serializers.SerializerMethodField()
+    failure_rate = serializers.SerializerMethodField()
+
+    def get_defects(self, obj):
+        # Access prefetched data without triggering queries
+        metrics_list = obj.metrics.all()  # This uses the prefetched cache
+        if metrics_list:
+            return metrics_list[0].defects
+        return None
+
+    def get_failure_rate(self, obj):
+        # Access prefetched data without triggering queries
+        metrics_list = obj.metrics.all()  # This uses the prefetched cache
+        if metrics_list:
+            return metrics_list[0].failure_rate
+        return None
+
+    def to_representation(self, instance):
+        represent = super().to_representation(instance)
+        represent['priority'] = get_priority_repr(instance.priority)
+        represent['testcase_type'] = instance.testcase_type.capitalize()
+        return represent
 
 
 class TestcaseListSerializer(serializers.Serializer):
@@ -132,7 +165,9 @@ class FileUploadSerializer(serializers.Serializer):
 
 class AITestPlanSerializer(serializers.Serializer):
     user_msg = serializers.CharField(max_length=500)   # new field
-    session_id = serializers.CharField(max_length=200, required=False, allow_blank=True) # new field
+    session_id = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    add_data = serializers.BooleanField(required=False) # new field
+    tcs_list = serializers.ListField(child=serializers.DictField(), required=False) # new field
 
     def to_representation(self, instance):
         represent = super().to_representation(instance)
