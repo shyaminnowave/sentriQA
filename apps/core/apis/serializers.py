@@ -465,7 +465,7 @@ class ScoreSerializer(serializers.ModelSerializer):
         represent['testplan'] = instance.testplan.name
         represent['generated'] = True
         represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
-        represent['mode'] = instance.mode.upper()
+        represent['mode'] = instance.mode.upper() if instance.mode else None
         represent['created'] = format_datetime(instance.created) if instance.created else None
         represent['modified'] = format_datetime(instance.modified) if instance.modified else None
         represent['testscore'] = float(instance.testscore) if instance.testscore else 0
@@ -484,6 +484,7 @@ class PlanSerializer(serializers.ModelSerializer):
         model = TestPlan
         fields = ('id', 'name', 'description', 'priority', 'output_counts', 'modules', 'testcases',
                   'created', 'modified')
+        ordering  = '-created'
 
     def create(self, validated_data):
         return super().create(validated_data)
@@ -566,7 +567,7 @@ class PlanSerializer(serializers.ModelSerializer):
         represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
         represent['created'] = format_datetime(instance.created)
         represent['modified'] = format_datetime(instance.modified)
-        represent['modes'] = instance.modes if instance.modes else ''
+        represent['modes'] = instance.modes.upper() if instance.modes else ''
         return represent
 
 
@@ -595,7 +596,7 @@ class TestPlanningSerializer(serializers.ModelSerializer):
         format_priority = lambda x: x.replace('_', ' ').title()
         represent['modules'] = [i.name for i in instance.modules.all()]
         represent['priority'] = format_priority(instance.priority)
-        represent['modes'] = instance.modes.upper()
+        represent['modes'] = instance.modes.upper() if instance.modes else None
         return represent
     
 class MetrixSerializer(serializers.ModelSerializer):
@@ -628,7 +629,7 @@ class TestMetrixSerializer(serializers.ModelSerializer):
     )
 
     def get_test_score(self, obj):
-        return round(float(obj.get_test_scores)) if obj.get_test_scores else 0
+        return (float(obj.get_test_scores)) if obj.get_test_scores else 0
 
     class Meta:
         model = TestCaseMetric

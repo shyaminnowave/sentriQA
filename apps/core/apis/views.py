@@ -179,7 +179,7 @@ class GetTestVersionAPI(c.CustomGenericAPIView):
         queryset = []
         if self.kwargs.get('token') != 'null':
             queryset = (TestPlanSession.objects.only('id', 'version', 'status', 'created').
-                        filter(session__session_id=self.kwargs.get('token')))
+                        filter(session__session_id=self.kwargs.get('token'))).order_by('-version')
         return queryset
 
     def get(self, request, *args, **kwargs):
@@ -367,7 +367,7 @@ class AITestPlanningView(generics.GenericAPIView):
 class TestScores(APIView):
 
     def get(self, request, *args, **kwargs):
-        queryset = TestCaseMetric.objects.all()
+        queryset = TestCaseMetric.objects.filter(testcase__module__id=71)
         serializer = TestMetrixSerializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -411,7 +411,7 @@ class GetScoreViewAPIView(generics.GenericAPIView):
 class TestPlanView(generics.ListAPIView):
 
     serializer_class = PlanListSerializer
-    queryset = TestPlan.objects.filter(is_active=True).all()
+    queryset = TestPlan.objects.filter(is_active=True).order_by('-created').all()
     pagination_class = CustomPagination
 
     # def get(self, request, *args, **kwargs):
@@ -489,11 +489,13 @@ class AITestCaseFilterChat(generics.GenericAPIView):
                 if page is not None:
                     # Get paginated response
                     paginated_response = self.paginator.get_paginated_response(page, filter_value)
-                    response_dict['tcs_data'].pop('tcs')
+                    if response_dict['tcs_data'].get('tcs'):
+                        response_dict['tcs_data'].pop('tcs')
                     response_dict['tcs_data'] = paginated_response.data
                 else:
                     # Fallback (shouldn't happen with pagination_class set)
-                    response_dict['tcs_data'].pop('tcs')
+                    if response_dict['tcs_data'].get('tcs', False):
+                        response_dict['tcs_data'].pop('tcs')
                     response_dict['tcs_data'] = serialized_data
 
             return Response(response_dict, status=status.HTTP_200_OK)
@@ -567,7 +569,7 @@ class GenerateScoreView(APIView):
 
     def post(self, request, *args, **kwargs):
         scores = generate_score(request.data)
-        print('score', scores)
+        print('scores', scores)
         return Response(scores, status=status.HTTP_200_OK)
     
 

@@ -1,4 +1,5 @@
 import uuid
+import time
 from datetime import datetime
 from jsonschema import ValidationError
 from rest_framework.generics import get_object_or_404
@@ -101,9 +102,7 @@ def get_priority_repr(obj):
 
 def save_score(data=None):
     testcase_lst = []
-    print('inside')
     if data is None:
-        print('ud')
         queryset = TestCaseMetric.objects.all()
         for testcase in queryset:
             if not TestCaseScoreModel.objects.filter(testcase__id=testcase.id).exists():
@@ -116,15 +115,13 @@ def save_score(data=None):
     else:
         testcase_ids = [tc.id for tc in data]
         queryset = TestCaseMetric.objects.filter(testcase__id__in=testcase_ids)
-        print('inside')
         score = score_obj.calculate_scores(queryset)
-        for sc in score:
-            "testing"
-            print(sc)
     return True
 
 
 def generate_score(data):
+    print('data', data)
+    start = time.time()
     queryset = TestCaseMetric.objects.filter(
         Q(testcase__module__id__in=data.get('module')) &
         Q(testcase__testcase_type='functional')
@@ -132,10 +129,16 @@ def generate_score(data):
     module__name = Module.objects.filter(
         id__in=data.get('module')
     ).values_list('name', flat=True)
+    end = time.time()
+    result = end-start
+    print('result', result)
     results = []
     if queryset is not None:
+        score_start = time.time()
         score_obj = TestCaseScore()
         score = score_obj.calculate_scores(queryset)
+        end_score = time.time()
+        print('score', end_score-score_start)
         output_counts = data.get('output_counts', 0)
         for match in score:
             # Convert to appropriate data types
@@ -174,10 +177,10 @@ def generate_score(data):
 
 def get_prev_version(session):
     try:
-        instance = TestPlanSession.objects.filter(session=session).order_by('-created').first()
-        if instance:
-            setattr(instance, 'status', 'draft')
-            instance.save()
+        instance = TestPlanSession.objects.filter(session=session).order_by('-created')
+        print(len(instance))
+        instance.update(status='draft')
+        print('instance', instance.satus)
         return None
     except Exception as e:
         print("error", str(e))
@@ -191,10 +194,12 @@ def save_version(data):
         data = session_data.model_dump()
     except Exception as e:
         print('Testing', str(e))
+    print('testing', data)
     session = str(data.pop('session'))
     modules = data.pop('modules')
     status = data.pop('status') if data.get('status') else 'saved'
     get_modules = Module.objects.filter(name__in=modules)
+    print('get_modules', get_modules)
     try:
         get_session = AISessionStore.objects.get(session_id=session)
     except AISessionStore.DoesNotExist:

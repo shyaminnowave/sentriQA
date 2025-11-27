@@ -1,4 +1,6 @@
 import json
+from typing import Dict, Any
+
 from langchain_core.messages import HumanMessage
 from loguru import logger
 from aimode.core.llms import llm
@@ -82,7 +84,7 @@ def modify_testplan(session_id: str, add_data: bool, tcs_list: list):
         }
 
     content_dict["content"]=coverage_impact
-    content_dict["content"]+= f"Modified testplan has benn saved as version {next_version}"
+    content_dict["content"]+=f" The modified test plan has been saved as version {next_version}."
     content_dict["tcs_data"] = updated_testcases
 
     logger.success(f"Modified testplan saved as version {next_version}")
