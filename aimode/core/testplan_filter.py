@@ -22,18 +22,45 @@ def get_session_state(session_id: str) -> Dict[str, Any]:
     })
 
 
+# def parse_json_from_llm(content: str) -> Dict[str, Any]:
+#     try:
+#         match = re.search(r"\{[\s\S]*\}$", content.strip())
+#         if match:
+#             json_str = match.group()
+#             return json.loads(json_str)
+#         else:
+#             logger.warning("No JSON block found in LLM output")
+#             return {"filters": {}, "suggestions": []}
+#     except Exception as e:
+#         logger.error(f"Failed to parse JSON:\n{content}\nError: {e}")
+#         return {"filters": {}, "suggestions": []}
+
 def parse_json_from_llm(content: str) -> Dict[str, Any]:
     try:
-        match = re.search(r"\{[\s\S]*\}$", content.strip())
-        if match:
-            json_str = match.group()
-            return json.loads(json_str)
+        if "```json" in content:
+            json_str = content.split("```json", 1)[1].split("```", 1)[0].strip()
         else:
-            logger.warning("No JSON block found in LLM output")
-            return {"filters": {}, "suggestions": []}
+            match = re.search(r"\{[\s\S]*\}", content)
+            if not match:
+                return {"filters": {}, "suggestions": []}
+            json_str = match.group()
+        json_str = (json_str.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'"))
+        json_str = re.sub(r",\s*([}\]])", r"\1", json_str)
+        return json.loads(json_str)
     except Exception as e:
-        logger.error(f"Failed to parse JSON:\n{content}\nError: {e}")
+        logger.error(f"JSON parse failed: {e}\nRaw:\n{json_str}")
         return {"filters": {}, "suggestions": []}
+
+
+def extract_clean_text(content: str) -> str:
+    """
+    Removes the JSON block at the end of the LLM response,
+    returning only the natural language message.
+    """
+    match = re.search(r"\{[\s\S]*\}$", content.strip())
+    if match:
+        return content[: match.start()].strip()
+    return content.strip()
 
 
 class FilterArgs(BaseModel):
@@ -72,9 +99,7 @@ def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
     if has_new_filters:
         state["filters"] = new_filters
         tcs_data = get_filtered_data(new_filters)
-        logger.debug(1)
         if tcs_data:
-            logger.debug(14242)
             state["last_testplan"] = tcs_data
             filters_summary = "; ".join(
                 f"{k}: {', '.join(v) if isinstance(v, list) else v}"
@@ -88,14 +113,15 @@ def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
         else:
             user_content = "No testcases found for the given filters."
     else:
-        greetings = ["hello", "hi", "hey", "helllo", "hii"]
-        if any(word in user_message.lower() for word in greetings):
-            user_content = (
-                "Hello! I am your filtering agent. "
-                "I can help you filter testcases based on module, type, or priority."
-            )
-        else:
-            user_content = raw_content
+        # greetings = ["hello", "hi", "hey", "helllo", "hii"]
+        # if any(word in user_message.lower() for word in greetings):
+        #     user_content = (
+        #         "Hello! I am your filtering agent. "
+        #         "I can help you filter testcases based on module, type, or priority."
+        #     )
+        # else:
+        #     user_content = raw_content
+        user_content = extract_clean_text(raw_content)
 
     logger.debug(f"Last test plan: {state['last_testplan']}")
 
@@ -104,8 +130,10 @@ def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
         "content": user_content,
         "filters": state["filters"],
         "tcs_data": state["last_testplan"],
-        "suggestions": suggestions,
     }
+
+    if suggestions:
+        result["suggestions"] = suggestions
 
     logger.success(result)
     return result

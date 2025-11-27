@@ -349,8 +349,10 @@ class CreateTestPlanSerializer(serializers.Serializer):
                             testplan=testplan,
                             testcases=testcase_obj,
                             testscore=testcase_score,
+                            reasoning=tc.get('reasoning', "None"),
                             mode=mode
                         )
+                        print('testing')
                     except TestCaseModel.DoesNotExist:
                         print(f"TestCase with name '{testcase_name}' does not exist")
                         continue
@@ -454,7 +456,7 @@ class ScoreSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TestScore
-        fields = ('id', 'testcases', 'testplan', 'mode', 'testscore', 'modules', 'priority', 'testcase_type')
+        fields = ('id', 'testcases', 'testplan', 'mode', 'testscore', 'modules', 'reasoning', 'priority', 'testcase_type')
 
     def to_representation(self, instance):
         represent = super().to_representation(instance)
@@ -465,6 +467,7 @@ class ScoreSerializer(serializers.ModelSerializer):
         represent['testplan'] = instance.testplan.name
         represent['generated'] = True
         represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
+        represent['reason'] = instance.reasoning if instance.reasoning else None
         represent['mode'] = instance.mode.upper() if instance.mode else None
         represent['created'] = format_datetime(instance.created) if instance.created else None
         represent['modified'] = format_datetime(instance.modified) if instance.modified else None

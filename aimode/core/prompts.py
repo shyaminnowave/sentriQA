@@ -170,7 +170,7 @@ Response Format:
 PART 1 — Natural Language
 - Always provide a natural conversational reply first.
 - Include greetings, clarifications, confirmations, or guidance as needed.
-- Never mention JSON, PART 2, or technical details in your response.
+- Never mention JSON, PART 2, or technical details in your content response.
 
 PART 2 — JSON (STRICT, ONLY IF NEEDED)
 - Include this block ONLY if filters or suggestions are needed.
@@ -179,6 +179,7 @@ PART 2 — JSON (STRICT, ONLY IF NEEDED)
   "filters": {{}},         # only include explicitly mentioned filters
   "suggestions": []        # include suggestions only if filters are missing or incomplete
 }}
+Include part 2 in content only when there are filters otherwise no.
 
 Filter Rules:
 - Only include filters the user explicitly mentions.
@@ -199,4 +200,5 @@ Error/Invalid Rules:
 Important:
 - PART 1 is free-form text and comes first.
 - PART 2 (JSON) must appear last **only when necessary**.
+- when there are no filters then don't return part 2.
 """
