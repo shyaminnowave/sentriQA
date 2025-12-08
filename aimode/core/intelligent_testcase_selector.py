@@ -42,8 +42,24 @@ def intelligent_testcase_selector(
         }
 
     # Step 2: Run scoring algorithm
+    # payload = {
+    #     "name": f"Intelligent Plan: {', '.join(module_names)[:180]}",
+    #     "description": f"LLM-assisted selection for: {user_query}",
+    #     "output_counts": output_counts,
+    #     "module": module_ids,
+    #     "priority": priority,
+    # }
+    max_display = 5
+    display_modules = module_names[:max_display]
+
+    if len(module_names) > max_display:
+        extra = len(module_names) - max_display
+        module_part = f"{', '.join(display_modules)} and {extra} more"
+    else:
+        module_part = ", ".join(display_modules)
+
     payload = {
-        "name": f"Intelligent Plan for: {', '.join(module_names)}",
+        "name": f"Intelligent Plan: {module_part}",
         "description": f"LLM-assisted selection for: {user_query}",
         "output_counts": output_counts,
         "module": module_ids,

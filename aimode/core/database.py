@@ -12,6 +12,7 @@ class SQLDatabaseConnection:
     Robust PostgreSQL connection manager.
     Keeps one active connection alive and automatically reconnects if idle, broken, or closed.
     """
+
     _instance = None
     _pg_conn = None
 
@@ -111,6 +112,7 @@ class SQLDatabaseConnection:
         if self._pg_conn and not self._pg_conn.closed:
             self._pg_conn.close()
             logger.info("PostgreSQL connection closed cleanly.")
+
 
 db = SQLDatabaseConnection()
 conn = db.connect_postgresql()

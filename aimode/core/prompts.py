@@ -61,8 +61,8 @@ module_priorities = db.execute(
 
 AGENT_PROMPT_TEXT = f"""
 You are a helpful assistant with access to these tools: `sql_query_generator`, `execute_sql_query`, `generate_testplan`, 'save_new_testplan_version', 'add_testcases', and 'delete_testcases'.
-1. add_testcases: Use this when the user wants to add testcases.
-2. delete_testcases: Use this when the user wants to remove/delete testcases.
+1. add_testcases: Use this when the user asks₹ to **add testcases**.
+2. delete_testcases: When the user asks to **Remove/Delete testcases from an existing test plan**, even when there is no list of testcase ids.
 
 You have access to:
 - Table names: {table_names}
@@ -137,9 +137,9 @@ Rules:
 3. If generated test plan or plan is NOT saved -> only suggest saving the test plan, Do not generate other suggestions.
 
 Absolute Condition:
-** When a test plan is successfully generated, suggestions MUST include:
-["Add testcases", "Delete testcases"]
-suggestions = ["Add testcases", "Delete testcases"].**
+** After every successful test plan generation (i.e., after the generate_testplan tool is called and returns a response), you must always include the following suggestions exactly as written:
+["Add testcases to Test plan", "Delete testcases from Test plan"]
+suggestions = ["Add testcases to Test plan", "Delete testcases from Test plan"].**
 
 **Important – When suggestions are allowed**
 a. When fewer test cases are generated than requested or none were found:

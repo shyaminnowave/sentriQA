@@ -1,18 +1,29 @@
 import json
+from typing import Dict, Any
 from langchain_core.messages import HumanMessage
 from loguru import logger
 from aimode.core.llms import llm
 from apps.core.models import AISessionStore, TestPlanSession
 from apps.core.helpers import save_version
-from aimode.core.tools import get_last_generated_testplan
+from aimode.core.tools import set_last_generated_testplan, get_last_generated_testplan
 
 
-def modify_testplan(session_id: str, add_data: bool, tcs_list: list):
+def modify_testplan(
+    session_id: str,
+    add_data: bool,
+    tcs_list: list,
+    existing_plan: Dict[str, Any] = None,
+):
     """
     Modify an already-generated test plan by adding or removing testcases.
-    Generates an LLM-based coverage impact summary and saves a new version.
+    Generates an LLM-based coverage impact summary and then ASKS USER
+    whether to save the modified test plan version.
     """
-    existing_plan = get_last_generated_testplan()
+    logger.success(session_id)
+    logger.success("Inside modify testplan")
+    if existing_plan is None:
+        existing_plan = get_last_generated_testplan(session_id)
+
     if not existing_plan:
         return {"status": 400, "message": "No existing test plan found to modify."}
 
@@ -21,8 +32,28 @@ def modify_testplan(session_id: str, add_data: bool, tcs_list: list):
 
     title = "added testcases" if add_data else "deleted testcases"
 
-    dynamic_text = json.dumps(tcs_list, indent=2)
-    existing_text = json.dumps(existing_testcases, indent=2)
+    # if not add_data:
+    #     tcs_ids = set(str(x) for x in tcs_list)
+    #     matched_testcases = [
+    #         tc for tc in existing_testcases if str(tc["id"]) in tcs_ids
+    #     ]
+    #     tcs_list = matched_testcases
+    #     logger.info(f"Matched testcases for deletion: {tcs_list}")
+    if not add_data:
+        tcs_ids = set()
+        for item in tcs_list:
+            if isinstance(item, dict) and "id" in item:
+                tcs_ids.add(str(item["id"]))
+            else:
+                tcs_ids.add(str(item))
+        matched_testcases = [
+            tc for tc in existing_testcases if str(tc["id"]) in tcs_ids
+        ]
+        tcs_list = matched_testcases
+        logger.info(f"Matched testcases for deletion: {tcs_list}")
+
+    chosen_testcases_json = json.dumps(tcs_list, indent=2)
+    existing_testcases_json = json.dumps(existing_testcases, indent=2)
 
     PROMPT = f"""
     You are an expert QA architect. Your task is to evaluate changes made to a test plan.
@@ -32,60 +63,47 @@ def modify_testplan(session_id: str, add_data: bool, tcs_list: list):
     2. A list of {title}
 
     Your job:
-    - Analyze if added/removed testcases increase or decrease risk coverage.
-    - Check if added testcases improve coverage.
-    - Check if deleted testcases remove essential coverage.
+    - Analyze whether the changes increase or decrease risk coverage.
+    - Evaluate if deleted testcases remove essential coverage.
+    - Evaluate if added testcases improve or expand coverage.
     - Detect redundancy removal (good) or missing coverage (bad).
-    - If added testcases belong to modules that were not part of the original test plan, briefly inform the user. Explain how this impacts the test plan.
-        - Explain the impact: whether it expands coverage (positive) or deviates from the intended module scope (potential issue).
-    - Provide a clear verdict.
-    - DO NOT rewrite or generate testcases.
+    - If added testcases belong to new modules, explain their impact briefly.
 
     Your output:
     - Provide ONLY 1–2 sentences summarizing the coverage impact.
-    - No bullet points. No extra commentary.
+    - No bullet points. No long explanations.
 
     Existing Test Plan:
-    {existing_text}
+    {existing_testcases_json}
 
     Updated {title}:
-    {dynamic_text}
+    {chosen_testcases_json}
     """
 
     llm_response = llm.invoke([HumanMessage(content=PROMPT)])
     coverage_impact = llm_response.content.strip()
+
     if add_data:
         for tc in tcs_list:
             tc["mode"] = "classic"
             tc["generated"] = True
+
         updated_testcases = existing_testcases + tcs_list
+
     else:
         remove_ids = {tc["id"] for tc in tcs_list}
         updated_testcases = [
             tc for tc in existing_testcases if tc["id"] not in remove_ids
         ]
-
-    session_obj, _ = AISessionStore.objects.get_or_create(session_id=session_id)
-    next_version = TestPlanSession.objects.filter(session=session_obj).count() + 1
-    save_data = {
-        "session": session_id,
-        "context": existing_data.get("description", "AI-modified test plan"),
-        "version": str(next_version),
-        "name": existing_data.get("name", "Test Plan"),
-        "description": existing_data.get("description", ""),
-        "modules": existing_data.get("modules", []),
-        "output_counts": len(updated_testcases),
-        "testcase_data": updated_testcases,
+    set_last_generated_testplan(
+        session_id, {"data": {**existing_data, "testcases": updated_testcases}}
+    )
+    return {
+        "status": "pending_user_confirmation",
+        "content": (
+            f"{coverage_impact}\n\n"
+            "Would you like to save this updated test plan as a new version?\n\n"
+        ),
+        "tcs_data": updated_testcases,
+        "ask_to_save": True,
     }
-    save_version(save_data)
-    content_dict: Dict[str, Any] = {
-        "content": str,
-        "tcs_data": {},
-    }
-
-    content_dict["content"] = coverage_impact
-    content_dict[
-        "content"
-    ] += f" The modified test plan has been saved as version {next_version}."
-    content_dict["tcs_data"] = updated_testcases
-    return content_dict
