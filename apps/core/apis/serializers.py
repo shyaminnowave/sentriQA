@@ -268,7 +268,9 @@ class AITestPlanSerializer(serializers.Serializer):
     session_id = serializers.CharField(max_length=200, required=False, allow_blank=True)
     add_data = serializers.BooleanField(required=False) # new field
     tcs_list = serializers.ListField(child=serializers.DictField(), required=False) # new field
+    modify_extra_suggestions = serializers.BooleanField(required=False) # new field
 
+    
     def to_representation(self, instance):
         represent = super().to_representation(instance)
         return represent

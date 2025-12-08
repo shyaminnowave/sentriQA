@@ -3,6 +3,7 @@ Intelligent hybrid test case selector:
 1. Fetch all candidate test cases using algorithmic scoring.
 2. Let the LLM select the most relevant ones.
 """
+
 import json
 from loguru import logger
 from rest_framework import status
@@ -13,12 +14,24 @@ from apps.core.models import Module
 from aimode.core.llms import llm
 
 
-def intelligent_testcase_selector(user_query: str, module_names: List[str], priority: List[str], output_counts: int, session_id: str):
-    logger.info(f"intelligent_testcase_selector | session={session_id}, modules={module_names}, priority={priority}")
+def intelligent_testcase_selector(
+    user_query: str,
+    module_names: List[str],
+    priority: List[str],
+    output_counts: int,
+    session_id: str,
+):
+    logger.info(
+        f"intelligent_testcase_selector | session={session_id}, modules={module_names}, priority={priority}"
+    )
 
     # Step 1:module IDs
-    module_ids = list(Module.objects.filter(name__in=module_names).values_list('id', flat=True))
-    module_display_names = list(Module.objects.filter(id__in=module_ids).values_list('name', flat=True))
+    module_ids = list(
+        Module.objects.filter(name__in=module_names).values_list("id", flat=True)
+    )
+    module_display_names = list(
+        Module.objects.filter(id__in=module_ids).values_list("name", flat=True)
+    )
 
     if not module_ids:
         return {
@@ -83,10 +96,12 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         Output ONLY valid JSON (list of selected testcases).
         """
 
-        llm_response = llm.invoke([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ])
+        llm_response = llm.invoke(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+        )
 
         content = llm_response.content.strip()
         if "```json" in content:
@@ -103,7 +118,7 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
             "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "message": "Error during intelligent selection. Please retry.",
         }
-    warning=""
+    warning = ""
     warning_prompt = f"""
     You are a Senior QA Analyst.
 
@@ -122,7 +137,6 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
     - Suggest increasing the test count
 
     If coverage appears adequate, return an empty string.
-
     Output ONLY the warning or an empty string.
     """
 
@@ -130,15 +144,14 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         warning_response = llm.invoke(warning_prompt)
 
         warning = getattr(warning_response, "content", str(warning_response)).strip()
-        warning = warning.replace("```", "").strip()  
-        warning = warning.strip('"')  
-        warning = " ".join(warning.split()) 
+        warning = warning.replace("```", "").strip()
+        warning = warning.strip('"')
+        warning = " ".join(warning.split())
         logger.success(warning)
 
     except Exception as e:
         logger.error(f"Warning generation failed: {e}")
         warning = ""
-
 
     # Step 4: Generate separate reasoning summary
     reasoning = []
@@ -163,7 +176,6 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         ]
         """
 
-
         reasoning_user_prompt = f"""
         MODULES: {module_names}
         PRIORITY: {priority}
@@ -174,10 +186,12 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         Generate risk-based reasoning for each test case.
         """
 
-        reasoning_response = llm.invoke([
-            {"role": "system", "content": reasoning_system_prompt},
-            {"role": "user", "content": reasoning_user_prompt}
-        ])
+        reasoning_response = llm.invoke(
+            [
+                {"role": "system", "content": reasoning_system_prompt},
+                {"role": "user", "content": reasoning_user_prompt},
+            ]
+        )
 
         reasoning_content = reasoning_response.content.strip()
         if "```json" in reasoning_content:
@@ -190,7 +204,7 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         logger.error(f"Reasoning generation failed: {e}")
         reasoning = [{"id": None, "reason": "Reasoning generation failed."}]
 
-    #Merging reasoning in testcases
+    # Merging reasoning in testcases
     for i in range(min(len(selected_cases), len(reasoning))):
         selected_cases[i]["reason"] = reasoning[i].get("reason", "")
 
@@ -203,7 +217,7 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         "project": "default_project",
         "generate_test_count": len(selected_cases),
         "testcase_type": "functional",
-        "testcases": selected_cases, 
+        "testcases": selected_cases,
         "version_info": warning,
     }
 
@@ -214,5 +228,7 @@ def intelligent_testcase_selector(user_query: str, module_names: List[str], prio
         "message": "success",
     }
 
-    logger.success(f"[COMPLETE] Returned {len(selected_cases)} testcases with {len(reasoning)} reasoning items.")
+    logger.success(
+        f"[COMPLETE] Returned {len(selected_cases)} testcases with {len(reasoning)} reasoning items."
+    )
     return final_response

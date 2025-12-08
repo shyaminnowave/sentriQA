@@ -9,15 +9,19 @@ from loguru import logger
 
 memory = MemorySaver()
 
-def get_llm_response(query: str, session_id: str,add_data: bool = False,tcs_list: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-    logger.info(f"get_llm_response called with session_id={session_id}, query={query}")
+def get_llm_response(query: str, session_id: str,add_data: bool = False,tcs_list: List[Dict[str, Any]] = None, modify_extra_suggestions: bool = False) -> Dict[str, Any]:
+    if modify_extra_suggestions:
+        return{
+            "content": "How may I assist you? Would you like to add or delete test cases in the test plan?",
+            "suggestions": ["Add testcases", "Delete testcases"],
+        }
+
     if tcs_list is not None:
         return modify_testplan(
             session_id=session_id,
             add_data=add_data,
-            tcs_list=tcs_list,     
-        )
-
+            tcs_list=tcs_list,)
+            
     config = {"configurable": {"thread_id": session_id}}
     state = {
         "messages": [HumanMessage(content=query)],
@@ -68,7 +72,6 @@ def get_llm_response(query: str, session_id: str,add_data: bool = False,tcs_list
                 requested_count = tcs_info.get("output_counts", 0)
                 version_message = tcs_info.get("version_message")
                 no_save = tcs_info.get("no_save")
-                logger.info(f"version message : {version_message}")
                 if len(tcs_list) == 0:
                     content_dict["content"] = "No matching test cases found. Please refine your parameters."
                     break
@@ -100,6 +103,16 @@ def get_llm_response(query: str, session_id: str,add_data: bool = False,tcs_list
                     content_dict["tcs_data"] = ast.literal_eval(raw_save_output)
             except Exception as e:
                 logger.error(f"Failed parsing save tool output: {e}")
+        if isinstance(msg, ToolMessage) and msg.name == "add_testcases":
+            raw = msg.content
+            try:
+                parsed = json.loads(raw)
+                return {
+                "content": "I’ve gathered all the test cases you can add to the test plan.",
+                "all_testcases_data": parsed.get("all_testcases_data", parsed)
+            }
+            except Exception:
+                return {"all_testcases_data_raw": raw}
 
     structured_dict = getattr(msgs[-1], "additional_kwargs", {}).get("structured", None)
     if structured_dict:
@@ -111,6 +124,7 @@ def get_llm_response(query: str, session_id: str,add_data: bool = False,tcs_list
             content_dict["suggestions"] = merged
         
     logger.info(f"Final tcs_data: {content_dict['tcs_data']}")
+    # content_dict["suggestions"] += ["Add testcases", "Delete testcases"]
     if not content_dict.get("suggestions"):
         content_dict.pop("suggestions", None)
     if not content_dict.get("tcs_data"):

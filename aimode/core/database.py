@@ -46,7 +46,7 @@ class SQLDatabaseConnection:
                 user=db_user,
                 password=db_pass,
                 port=os.getenv("PGSQL_DATABASE_PORT"),
-                connect_timeout=10, 
+                connect_timeout=10,
             )
             self._pg_conn.autocommit = True
             logger.success("PostgreSQL connection established.")
@@ -65,7 +65,7 @@ class SQLDatabaseConnection:
                 return self.connect_postgresql()
 
             with self._pg_conn.cursor() as cur:
-                cur.execute("SELECT 1;") 
+                cur.execute("SELECT 1;")
             return self._pg_conn
 
         except (InterfaceError, OperationalError):
@@ -87,7 +87,9 @@ class SQLDatabaseConnection:
                     return results
                 return []
         except (InterfaceError, OperationalError):
-            logger.warning("Lost connection during query execution. Reconnecting and retrying...")
+            logger.warning(
+                "Lost connection during query execution. Reconnecting and retrying..."
+            )
             self._pg_conn = self.connect_postgresql()
             try:
                 with self._pg_conn.cursor() as cur:

@@ -86,7 +86,6 @@ class TestCasePagination(PageNumberPagination):
         response = super().get_paginated_response(data)
         page_count = math.ceil(response.data.get('count')/self.page_size)
         base_url = f"{self.request.scheme}://{self.request.get_host()}"
-        print('base_url', base_url)
         filter_query = self.get_next_page(filter_value)
         get_next = self.get_next_link() if self.get_next_link() else None
         new_url = self.remove_last_path_segment(url=get_next)
@@ -96,8 +95,8 @@ class TestCasePagination(PageNumberPagination):
         prev_page = f"{new_prev}&{filter_query}" if get_prev else None
         return Response({
             'count': self.page.paginator.count,
-            'next': next_page,
-            'previous': prev_page,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
             'page_count': page_count,
             'current_page': self.page.number,
             'page_size': self.page_size,

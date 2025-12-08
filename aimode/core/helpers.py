@@ -1,7 +1,12 @@
 from typing import Dict, List
 from loguru import logger
 from aimode.core.database import db, conn
+
 # from database import db, conn
+from functools import lru_cache
+from apps.core.models import TestCaseModel
+from apps.core.apis.serializers import TestcaseSearchSerializer
+
 
 def get_active_projects(conn):
     query = """
@@ -19,6 +24,7 @@ def get_active_projects(conn):
     except Exception as e:
         logger.error(f"Error fetching active projects: {e}")
         return []
+
 
 def get_modules_by_project(conn, active_projects: list) -> Dict[str, list]:
     project_modules = {}
@@ -41,6 +47,7 @@ def get_modules_by_project(conn, active_projects: list) -> Dict[str, list]:
         logger.error(f"Error fetching modules for projects: {e}")
 
     return project_modules
+
 
 def get_sql_table_names(conn):
     query = """
@@ -82,6 +89,7 @@ def get_all_table_columns(conn) -> Dict[str, List[str]]:
 
     return {table: cols for table, cols in rows}
 
+
 def get_id_module_mapping():
     try:
         rows = db.execute("SELECT DISTINCT cm.name, cm.id FROM core.core_module AS cm")
@@ -90,6 +98,21 @@ def get_id_module_mapping():
         logger.error(f"Error fetching module mapping: {e}")
         return []
 
+
 def get_ids_by_module_names(module_names: list[str]) -> list[int]:
-    mapping = {m["name"]: m["id"] for m in get_id_module_mapping() if isinstance(m, dict)}
+    mapping = {
+        m["name"]: m["id"] for m in get_id_module_mapping() if isinstance(m, dict)
+    }
     return [mapping.get(name) for name in module_names if name in mapping]
+
+
+@lru_cache()
+def get_testcases():
+    logger.info(f"inside get_testcases")
+    queryset = (
+        TestCaseModel.objects.select_related("module")
+        .prefetch_related("metrics")
+        .only("id", "name", "priority", "module__name", "testcase_type")
+    )
+    serializer = TestcaseSearchSerializer(queryset, many=True)
+    return {"testcases": serializer.data}

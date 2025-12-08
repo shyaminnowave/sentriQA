@@ -15,25 +15,15 @@ session_states: Dict[str, Dict[str, Any]] = {}
 
 
 def get_session_state(session_id: str) -> Dict[str, Any]:
-    return session_states.setdefault(session_id, {
-        "filters": {},
-        "conversation_history": [],
-        "last_testplan": None,
-    })
+    return session_states.setdefault(
+        session_id,
+        {
+            "filters": {},
+            "conversation_history": [],
+            "last_testplan": None,
+        },
+    )
 
-
-# def parse_json_from_llm(content: str) -> Dict[str, Any]:
-#     try:
-#         match = re.search(r"\{[\s\S]*\}$", content.strip())
-#         if match:
-#             json_str = match.group()
-#             return json.loads(json_str)
-#         else:
-#             logger.warning("No JSON block found in LLM output")
-#             return {"filters": {}, "suggestions": []}
-#     except Exception as e:
-#         logger.error(f"Failed to parse JSON:\n{content}\nError: {e}")
-#         return {"filters": {}, "suggestions": []}
 
 def parse_json_from_llm(content: str) -> Dict[str, Any]:
     try:
@@ -44,7 +34,12 @@ def parse_json_from_llm(content: str) -> Dict[str, Any]:
             if not match:
                 return {"filters": {}, "suggestions": []}
             json_str = match.group()
-        json_str = (json_str.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'"))
+        json_str = (
+            json_str.replace("“", '"')
+            .replace("”", '"')
+            .replace("‘", "'")
+            .replace("’", "'")
+        )
         json_str = re.sub(r",\s*([}\]])", r"\1", json_str)
         return json.loads(json_str)
     except Exception as e:
@@ -80,7 +75,7 @@ def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
 
     messages = [
         SystemMessage(content=AGENT_FILTER_PROMPT_TEXT),
-        *state["conversation_history"]
+        *state["conversation_history"],
     ]
 
     response = llm.bind_tools([filter_testcases_tool]).invoke(messages)
@@ -103,33 +98,24 @@ def run_filter_flow(user_message: str, session_id: str) -> Dict[str, Any]:
             state["last_testplan"] = tcs_data
             filters_summary = "; ".join(
                 f"{k}: {', '.join(v) if isinstance(v, list) else v}"
-                for k, v in new_filters.items() if v
+                for k, v in new_filters.items()
+                if v
             )
 
-            user_content = (
-                    "Testcases have been filtered as per your requirements."
-                    + (f" Applied filters: {filters_summary}." if filters_summary else "")
+            user_content = "Testcases have been filtered as per your requirements." + (
+                f" Applied filters: {filters_summary}." if filters_summary else ""
             )
         else:
             user_content = "No testcases found for the given filters."
     else:
-        # greetings = ["hello", "hi", "hey", "helllo", "hii"]
-        # if any(word in user_message.lower() for word in greetings):
-        #     user_content = (
-        #         "Hello! I am your filtering agent. "
-        #         "I can help you filter testcases based on module, type, or priority."
-        #     )
-        # else:
-        #     user_content = raw_content
         user_content = extract_clean_text(raw_content)
 
     logger.debug(f"Last test plan: {state['last_testplan']}")
-
     result = {
         "session": session_id,
         "content": user_content,
         "filters": state["filters"],
-        "tcs_data": state["last_testplan"],
+        "tcs_data": state.get("last_testplan", None),
     }
 
     if suggestions:

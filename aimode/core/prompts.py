@@ -1,9 +1,13 @@
 from string import Template
 import json
 from typing import Dict, List
-from loguru import logger
 from aimode.core.database import db, conn
-from aimode.core.helpers import get_active_projects, get_modules_by_project, get_sql_table_names, get_all_table_columns
+from aimode.core.helpers import (
+    get_active_projects,
+    get_modules_by_project,
+    get_sql_table_names,
+    get_all_table_columns,
+)
 from langchain_core.prompts import ChatPromptTemplate
 
 SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient SQL Query. 
@@ -27,6 +31,7 @@ SQL_QUERY_GENERATION_BASE_PROMPT = """You are an expert who can create efficient
             4. If you're unsure about which table to use, ask for clarification
     """
 
+
 def build_sql_generation_prompt(conn, user_query) -> str:
     table_names = get_sql_table_names(conn)
     table_descriptions = get_all_table_columns(conn)
@@ -35,13 +40,12 @@ def build_sql_generation_prompt(conn, user_query) -> str:
     return Template(prompt).substitute(
         table_names=table_names,
         table_descriptions=table_descriptions,
-        user_query=user_query
+        user_query=user_query,
     )
 
 
 table_columns = ", ".join(
-    f"{col} = {dtype.strip('{}')}"
-    for col, dtype in get_all_table_columns(conn).items()
+    f"{col} = {dtype.strip('{}')}" for col, dtype in get_all_table_columns(conn).items()
 )
 
 table_names = ", ".join(name[0] for name in get_sql_table_names(conn))
@@ -51,10 +55,14 @@ moduleProjects = json.dumps(modules_by_project, indent=2)
 moduleProjects_escaped = moduleProjects.replace("{", "{{").replace("}", "}}")
 
 module_names = db.execute("SELECT DISTINCT cm.name FROM core.core_module AS cm")
-module_priorities = db.execute("SELECT DISTINCT ct.priority FROM core.core_testcasemodel AS ct")
+module_priorities = db.execute(
+    "SELECT DISTINCT ct.priority FROM core.core_testcasemodel AS ct"
+)
 
 AGENT_PROMPT_TEXT = f"""
-You are a helpful assistant with access to four tools: `sql_query_generator`, `execute_sql_query`, `generate_testplan` and 'save_new_testplan_version'.
+You are a helpful assistant with access to these tools: `sql_query_generator`, `execute_sql_query`, `generate_testplan`, 'save_new_testplan_version', 'add_testcases', and 'delete_testcases'.
+1. add_testcases: Use this when the user wants to add testcases.
+2. delete_testcases: Use this when the user wants to remove/delete testcases.
 
 You have access to:
 - Table names: {table_names}
@@ -79,10 +87,12 @@ When the user asks to generate a **test plan** or **test case**:
 9. Analyze the number of testcases generated with the expected output count.
 """
 
-AGENT_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", AGENT_PROMPT_TEXT.strip()),
-    ("placeholder", "{messages}"),
-])
+AGENT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", AGENT_PROMPT_TEXT.strip()),
+        ("placeholder", "{messages}"),
+    ]
+)
 
 
 CHANGE_DETECTION_PROMPT_TEXT = f"""
@@ -105,9 +115,9 @@ Query 1 (previous): {{last_query}}
 Query 2 (current): {{current_query}}
 """
 
-CHANGE_DETECTION_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", CHANGE_DETECTION_PROMPT_TEXT)
-])
+CHANGE_DETECTION_PROMPT = ChatPromptTemplate.from_messages(
+    [("system", CHANGE_DETECTION_PROMPT_TEXT)]
+)
 
 SUGGESTION_LLM_PROMPT_TEXT = """
 You are a Test Plan Structuring Assistant. Structure responses using only the provided context.
@@ -118,14 +128,18 @@ Context:
 - Allowed priority classes: {{module_priorities}}
 
 Output:
-1. 'base_content' → short, clean summary of the LLM response.
-2. 'suggestions' → list of actionable next steps.
+1. 'base_content' -> short, clean summary of the LLM response.
+2. 'suggestions' -> list of actionable next steps.
 
 Rules:
 1. Suggestions must use ONLY allowed modules and priority classes.
 2. Do NOT invent module names, classes, or variations.
-3. If the test plan is successful OR expected output count is met -> suggestions = [].
-4. If generated test plan or plan is NOT saved -> only suggest saving the test plan, Do not generate other suggestions.
+3. If generated test plan or plan is NOT saved -> only suggest saving the test plan, Do not generate other suggestions.
+
+Absolute Condition:
+** When a test plan is successfully generated, suggestions MUST include:
+["Add testcases", "Delete testcases"]
+suggestions = ["Add testcases", "Delete testcases"].**
 
 **Important – When suggestions are allowed**
 a. When fewer test cases are generated than requested or none were found:
@@ -143,8 +157,6 @@ a. When fewer test cases are generated than requested or none were found:
 b. If `output_counts` is missing while generating the test plan, return the following under 'suggestions' as individual selectable options:
    [ "2", "4", "5", "10", "Custom value" ]
 c. If execution failed -> suggest refining query, adjusting parameters, or retrying.
-d. If the test plan is successfully generated with expected number of test cases,
-   **do not suggest anything further.**
 
 Never repeat ideas or mix invalid module names.
 Keep tone concise, helpful, and action-oriented.
@@ -157,48 +169,32 @@ SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+
 AGENT_FILTER_PROMPT_TEXT = f"""
 You are a Testcase Filtering Agent.
-
-Your job:
-- Understand the user’s message.
-- Detect filters explicitly mentioned by the user.
-- Respond naturally to the user when needed (greetings, clarifications, explanations). Never mention JSON in the natural response.
-- Only produce suggestions if the user did not provide enough information to filter.
-
+You have access to tools: `filter_testcases_tool`.
+When the user mentions any filters (module, priority, testcase_type), you MUST call the tool `filter_testcases_tool` directly.
 Response Format:
-PART 1 — Natural Language
-- Always provide a natural conversational reply first.
-- Include greetings, clarifications, confirmations, or guidance as needed.
-- Never mention JSON, PART 2, or technical details in your content response.
+PART 1 — Brief Natural Response (Optional)
+- For greetings: friendly response only.
+- For filters: "Filtering for [filters]..." or similar brief confirmation.
 
-PART 2 — JSON (STRICT, ONLY IF NEEDED)
-- Include this block ONLY if filters or suggestions are needed.
+PART 2 — JSON Block (REQUIRED for ANY filter mention)
+- Include this IMMEDIATELY when user mentions filters.
 - Format:
 {{
-  "filters": {{}},         # only include explicitly mentioned filters
-  "suggestions": []        # include suggestions only if filters are missing or incomplete
+  "filters": {{
+    "module": ["exact_module_name"],
+    "priority": ["exact_priority_value"],
+    "testcase_type": ["test_type"]
+  }},
+  "suggestions": []
 }}
-Include part 2 in content only when there are filters otherwise no.
 
-Filter Rules:
-- Only include filters the user explicitly mentions.
-- Valid filter keys:
-  - "testcase_type": functional, regression, smoke, sanity, performance, etc.
-  - "module": must match EXACT names from: {module_names}
-  - "priority": must match EXACT values from: {module_priorities}
+Valid Values:
+- modules: {module_names}
+- priorities: {module_priorities}
+- testcase_types: ["functional", "regression", "smoke", "sanity", "performance", "integration", "ui", "api"]
 
-Suggestions Rules:
-- Only include suggestions if filters are missing or unclear (3–6 options, flat list).
-- Suggestions should be short keywords (e.g., "Player", "Login"), never full sentences.
-- Do NOT include suggestions unnecessarily.
-
-Error/Invalid Rules:
-- If the user mentions an invalid module → politely clarify in natural language.
-- Never invent filters.
-
-Important:
-- PART 1 is free-form text and comes first.
-- PART 2 (JSON) must appear last **only when necessary**.
-- when there are no filters then don't return part 2.
+Be decisive: When in doubt, execute the tool rather than ask for confirmation.
 """

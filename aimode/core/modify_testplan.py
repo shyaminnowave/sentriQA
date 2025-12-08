@@ -1,6 +1,4 @@
 import json
-from typing import Dict, Any
-
 from langchain_core.messages import HumanMessage
 from loguru import logger
 from aimode.core.llms import llm
@@ -58,12 +56,14 @@ def modify_testplan(session_id: str, add_data: bool, tcs_list: list):
     coverage_impact = llm_response.content.strip()
     if add_data:
         for tc in tcs_list:
-            tc["mode"]="classic"
-            tc["generated"]=True
+            tc["mode"] = "classic"
+            tc["generated"] = True
         updated_testcases = existing_testcases + tcs_list
     else:
         remove_ids = {tc["id"] for tc in tcs_list}
-        updated_testcases = [tc for tc in existing_testcases if tc["id"] not in remove_ids]
+        updated_testcases = [
+            tc for tc in existing_testcases if tc["id"] not in remove_ids
+        ]
 
     session_obj, _ = AISessionStore.objects.get_or_create(session_id=session_id)
     next_version = TestPlanSession.objects.filter(session=session_obj).count() + 1
@@ -81,13 +81,11 @@ def modify_testplan(session_id: str, add_data: bool, tcs_list: list):
     content_dict: Dict[str, Any] = {
         "content": str,
         "tcs_data": {},
-        }
+    }
 
-    content_dict["content"]=coverage_impact
-    content_dict["content"]+=f" The modified test plan has been saved as version {next_version}."
+    content_dict["content"] = coverage_impact
+    content_dict[
+        "content"
+    ] += f" The modified test plan has been saved as version {next_version}."
     content_dict["tcs_data"] = updated_testcases
-
-    logger.success(f"Modified testplan saved as version {next_version}")
-    logger.info(content_dict["content"])
-    logger.info(content_dict["tcs_data"])
     return content_dict
