@@ -469,6 +469,7 @@ class ScoreSerializer(serializers.ModelSerializer):
         represent['testplan'] = instance.testplan.name
         represent['generated'] = True
         represent['ai_reasoning'] = "Testing AI generated reasoning for the test plan."
+        represent['priority'] = get_priority_repr(instance.testcases.priority)
         represent['reason'] = instance.reasoning if instance.reasoning else None
         represent['mode'] = instance.mode.upper() if instance.mode else None
         represent['created'] = format_datetime(instance.created) if instance.created else None

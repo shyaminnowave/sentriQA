@@ -213,8 +213,9 @@ def get_llm_response(
         content_dict.pop("tcs_data", None)
     tcs_data = content_dict.get("tcs_data") or {}
     data = tcs_data.get("data") if isinstance(tcs_data, dict) else {}
-    if "testcase_data" in data and "testcases" not in data:
-        data["testcases"] = data["testcase_data"]
-    if not isinstance(data, dict) or not data.get("testcases"):
-        content_dict.pop("tcs_data", None)
+    if data:
+        if "testcase_data" in data and "testcases" not in data:
+            data["testcases"] = data.get("testcase_data", None)
+        if not isinstance(data, dict) or not data.get("testcases"):
+            content_dict.pop("tcs_data", None)
     return content_dict
