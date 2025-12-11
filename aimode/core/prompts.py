@@ -61,7 +61,7 @@ module_priorities = db.execute(
 
 AGENT_PROMPT_TEXT = f"""
 You are a helpful assistant with access to these tools: `sql_query_generator`, `execute_sql_query`, `generate_testplan`, 'save_new_testplan_version', 'add_testcases', and 'delete_testcases'.
-1. add_testcases: Use this when the user asks₹ to **add testcases**.
+1. add_testcases: Use this when the user asks to **add testcases to an existing test plan**, even when there is no list of testcase ids.
 2. delete_testcases: When the user asks to **Remove/Delete testcases from an existing test plan**, even when there is no list of testcase ids.
 
 You have access to:

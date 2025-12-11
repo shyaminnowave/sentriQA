@@ -19,7 +19,6 @@ def get_llm_response(
     if tcs_list is not None:
         from aimode.core.modify_testplan import modify_testplan
 
-        logger.success("Going to modify testplan")
         result = modify_testplan(
             session_id=session_id, add_data=add_data, tcs_list=tcs_list
         )
@@ -133,17 +132,44 @@ def get_llm_response(
                     content_dict["tcs_data"] = ast.literal_eval(raw_save_output)
             except Exception as e:
                 logger.error(f"Failed parsing save tool output: {e}")
+
         if isinstance(msg, ToolMessage) and msg.name == "add_testcases":
             raw = msg.content
+            if isinstance(raw, str):
+                raw = raw.strip()
             try:
-                parsed = json.loads(raw)
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                if isinstance(parsed, dict) and parsed.get("all_testcases_data"):
+                    return {
+                        "content": parsed.get(
+                            "content",
+                            "Here are all available test cases you can add to the test plan. "
+                            "You may select them directly from the list or provide the IDs of the test cases you'd like to include.",
+                        ),
+                        "is_add_testcase": True,
+                        "all_testcases_data": parsed.get("all_testcases_data", []),
+                    }
+                if isinstance(parsed, dict) and parsed.get("added_ids"):
+                    return {
+                        "content": parsed.get(
+                            "impact",
+                            "The selected test cases have been added successfully.",
+                        ),
+                        "added_ids": parsed.get("added_ids", []),
+                        "tcs_data": parsed.get("updated_testcases", []),
+                        "suggestions": [
+                            "Yes, save the updated test plan",
+                            "No, discard changes",
+                        ],
+                        "ask_to_save": True,
+                    }
+            except Exception as e:
+                logger.error(f"Error parsing add_testcases response: {e}")
                 return {
-                    "content": "I’ve gathered all the test cases you can add to the test plan.",
+                    "content": "An error occurred while processing the testcases.",
+                    "all_testcases_data_raw": raw,
                     "is_add_testcase": True,
-                    "all_testcases_data": parsed.get("all_testcases_data", parsed),
                 }
-            except Exception:
-                return {"all_testcases_data_raw": raw}
 
         if isinstance(msg, ToolMessage) and msg.name == "delete_testcases":
             raw = msg.content.strip()
@@ -187,7 +213,8 @@ def get_llm_response(
         content_dict.pop("tcs_data", None)
     tcs_data = content_dict.get("tcs_data") or {}
     data = tcs_data.get("data") if isinstance(tcs_data, dict) else {}
-
+    if "testcase_data" in data and "testcases" not in data:
+        data["testcases"] = data["testcase_data"]
     if not isinstance(data, dict) or not data.get("testcases"):
         content_dict.pop("tcs_data", None)
     return content_dict

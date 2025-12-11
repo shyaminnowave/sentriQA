@@ -23,22 +23,37 @@ _last_generated_testplan: Optional[dict] = None
 _last_generated_testplans: dict[str, dict] = {}
 
 
-# def set_last_generated_testplan(plan_data: dict):
-#     global _last_generated_testplan
-#     # _last_generated_testplan = plan_data
-#     logger.info("[tools.py] Last generated test plan updated")
-
-
-# def get_last_generated_testplan() -> Optional[dict]:
-#     return _last_generated_testplan
-
-
 def set_last_generated_testplan(session_id: str, plan_data: dict):
     _last_generated_testplans[session_id] = plan_data
+    # obj, _ = AISessionStore.objects.get_or_create(session_id=session_id)
+    # obj.last_testplan = plan_data
+    # obj.save()
 
 
-def get_last_generated_testplan(session_id: str) -> Optional[dict]:
+def get_last_testplan(session_id: str) -> Optional[dict]:
     return _last_generated_testplans.get(session_id)
+
+
+#     # try:
+#     #     obj = AISessionStore.objects.get(session_id=session_id)
+#     #     return obj.last_testplan
+#     # except AISessionStore.DoesNotExist:
+#     #     return None
+
+
+def get_last_generated_testplan(session_id: str) -> Optional[list]:
+    try:
+        session_obj = AISessionStore.objects.get(session_id=session_id)
+    except AISessionStore.DoesNotExist:
+        return None
+
+    plan = (
+        TestPlanSession.objects.filter(session=session_obj)
+        .order_by("-version")
+        .only("testcase_data")
+        .first()
+    )
+    return {"data": {"testcases": plan.testcase_data or []}}
 
 
 def set_current_session_id(session_id: str, user_prompt: Optional[str] = None):
@@ -64,12 +79,12 @@ class SQLQueryGeneratorInput(BaseModel):
 @tool(description="Saves the last generated test plan version to the database.")
 def save_new_testplan_version():
     try:
-        testplan_data = get_last_generated_testplan(session_id)
-        logger.info(testplan_data)
+        session_id = get_current_session_id()
+        testplan_data = get_last_testplan(session_id)
+        # logger.info(testplan_data)
         if not testplan_data:
             logger.warning("No last test plan found.")
             return {"status": 400, "message": "No test plan found to save."}
-        session_id = get_current_session_id()
         session_obj, _ = AISessionStore.objects.get_or_create(session_id=session_id)
         testcases = testplan_data.get("data", {}).get("testcases", [])
 
@@ -95,7 +110,7 @@ def save_new_testplan_version():
         )
         final_response = {
             "status": 200,
-            "data": testplan_data,
+            "data": save_data,
             "message": f"Test plan saved as version {next_version}",
             "version_saved": next_version,
         }
@@ -253,64 +268,119 @@ def generate_testplan(
                 tcs_data["data"][
                     "no_save"
                 ] = "This test plan is not saved. The test plan is temporarily visible, and if you change the version, the generated test cases will not be shown."
-
     except Exception as e:
         logger.error(f"Error handling test plan version: {e}")
-    set_last_generated_testplan(session_id, tcs_data)
+    # set_last_generated_testplan(session_id, tcs_data)
+    finally:
+        set_last_generated_testplan(session_id, tcs_data)
+        logger.success("last generated plan is set")
     return tcs_data
 
 
-@tool(description="Add testcases to the test plan")
-def add_testcases():
-    """
-    Add testcases to the test plan
-    """
-    try:
-        content_dict: Dict[str, Any] = {
-            "content": "Here are the all testcases for you to add to the testplan.",
-            "all_testcases_data": {},
-        }
-        logger.info(f"inside add_testcases")
-        content_dict["all_testcases_data"] = get_testcases()["testcases"]
-        return json.dumps(content_dict, default=float)
-    except Exception as e:
-        logger.error(f"Error adding testcases: {e}")
-        return {"status": 500, "message": f"Error: {str(e)}"}
-
-
-class DeleteTestcasesInput(BaseModel):
+class modifyTestcasesInput(BaseModel):
     testcase_ids: Optional[List[str]] = Field(
         None, description="List of testcase IDs to delete"
     )
 
 
+@tool(args_schema=modifyTestcasesInput, description="Add testcases to the test plan")
+def add_testcases(testcase_ids: List[str] = None):
+    """
+    Add testcases to the test plan:
+    - If no IDs are provided, return list of all available testcases.
+    - If IDs are provided, fetch their dict objects and pass them to modify_testplan.
+    """
+    try:
+        from aimode.core.modify_testplan import modify_testplan
+
+        all_testcases = get_testcases().get("testcases", [])
+        # Case 1: No IDs -> just show all testcases to the user
+        if not testcase_ids:
+            content_dict: Dict[str, Any] = {
+                "content": "Here are all the available test cases you can add to the test plan. You may select them directly from the list or simply provide the IDs of the test cases you'd like to include.",
+                "all_testcases_data": all_testcases,
+            }
+            logger.success("ids not given")
+            return json.dumps(content_dict, default=float)
+        # Case 2: IDs provided -> find matching testcases
+        id_set = {str(tid) for tid in testcase_ids}
+        selected_testcases = [tc for tc in all_testcases if str(tc.get("id")) in id_set]
+        if not selected_testcases:
+            return {
+                "status": "error",
+                "message": "No matching testcases found for provided IDs.",
+            }
+        session_id = get_current_session_id()
+        existing_plan = get_last_generated_testplan(session_id)
+        selected_testcases = json.loads(json.dumps(selected_testcases, default=float))
+        logger.debug(selected_testcases)
+        result = modify_testplan(
+            session_id=session_id,
+            add_data=True,
+            tcs_list=selected_testcases,
+            existing_plan=existing_plan,
+        )
+        return {
+            "status": "success",
+            "added_ids": testcase_ids,
+            "impact": result.get("content"),
+            "updated_testcases": result.get("tcs_data", []),
+            "ask_to_save": result.get("ask_to_save", False),
+        }
+    except Exception as e:
+        logger.error(f"Error adding testcases: {e}")
+        return {"status": 500, "message": f"Error: {str(e)}"}
+
+
 @tool(
-    args_schema=DeleteTestcasesInput, description="Delete testcases from the test plan"
+    args_schema=modifyTestcasesInput, description="Delete testcases from the test plan"
 )
 def delete_testcases(testcase_ids: List[str] = None):
     """
-    Delete testcases from the test plan.
+    Delete testcases to the test plan:
+    - If no IDs are provided, return True to inform user about what to do.
+    - If IDs are provided, pass them to modify_testplan.
     """
     from aimode.core.modify_testplan import modify_testplan
 
-    logger.info(f"Delete testcases called with testcase_ids={testcase_ids}")
+    try:
+        if not testcase_ids:
+            logger.error("No IDs provided for deletion.")
+            return True
 
-    if not testcase_ids:
-        logger.success(True)
-        return True
-    session_id = get_current_session_id()
-    logger.info(f"Normalized deletion IDs: {testcase_ids}")
-    existing_plan = get_last_generated_testplan(session_id)
+        session_id = get_current_session_id()
+        existing_plan = get_last_generated_testplan(session_id)
+        testcases = existing_plan.get("data", {}).get("testcases", [])
+        current_ids = {str(tc.get("id")) for tc in testcases}
 
-    result = modify_testplan(
-        session_id=session_id,
-        add_data=False,
-        tcs_list=testcase_ids,
-        existing_plan=existing_plan,
-    )
-    return {
-        "status": "success",
-        "deleted_ids": testcase_ids,
-        "impact": result.get("content"),
-        "updated_testcases": result.get("tcs_data", []),
-    }
+        # 3) Detect invalid IDs
+        incoming_ids = {str(i) for i in testcase_ids}
+        invalid_ids = incoming_ids - current_ids
+        if invalid_ids:
+            return {
+                "status": "invalid_ids",
+                "impact": "I couldn’t find some of the test case IDs you entered in the current test plan. Could you verify them and try again?",
+                "invalid_ids": list(invalid_ids),
+                "deleted_ids": [],
+            }
+
+        safe_ids = json.loads(json.dumps(testcase_ids, default=float))
+        result = modify_testplan(
+            session_id=session_id,
+            add_data=False,
+            tcs_list=safe_ids,
+            existing_plan=existing_plan,
+        )
+        return {
+            "status": "success",
+            "deleted_ids": testcase_ids,
+            "impact": result.get("content"),
+            "updated_testcases": result.get("tcs_data", []),
+        }
+    except Exception as e:
+        logger.error(f"Error deleting testcases: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "deleted_ids": testcase_ids if testcase_ids else [],
+        }

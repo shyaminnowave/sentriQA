@@ -19,26 +19,17 @@ def modify_testplan(
     Generates an LLM-based coverage impact summary and then ASKS USER
     whether to save the modified test plan version.
     """
-    logger.success(session_id)
-    logger.success("Inside modify testplan")
     if existing_plan is None:
         existing_plan = get_last_generated_testplan(session_id)
 
     if not existing_plan:
+        logger.error("existing plan not found")
         return {"status": 400, "message": "No existing test plan found to modify."}
 
     existing_data = existing_plan.get("data", {})
     existing_testcases = existing_data.get("testcases", [])
 
     title = "added testcases" if add_data else "deleted testcases"
-
-    # if not add_data:
-    #     tcs_ids = set(str(x) for x in tcs_list)
-    #     matched_testcases = [
-    #         tc for tc in existing_testcases if str(tc["id"]) in tcs_ids
-    #     ]
-    #     tcs_list = matched_testcases
-    #     logger.info(f"Matched testcases for deletion: {tcs_list}")
     if not add_data:
         tcs_ids = set()
         for item in tcs_list:
@@ -81,8 +72,9 @@ def modify_testplan(
     """
 
     llm_response = llm.invoke([HumanMessage(content=PROMPT)])
+    logger.success(llm_response)
     coverage_impact = llm_response.content.strip()
-
+    logger.success(coverage_impact)
     if add_data:
         for tc in tcs_list:
             tc["mode"] = "classic"
