@@ -3,4 +3,5 @@
 .github
 *__pycache__/
 *pyc
+.idea/
 Dockerfile

@@ -59,6 +59,33 @@ module_priorities = db.execute(
     "SELECT DISTINCT ct.priority FROM core.core_testcasemodel AS ct"
 )
 
+# AGENT_PROMPT_TEXT = f"""
+# You are a helpful assistant with access to these tools: `sql_query_generator`, `execute_sql_query`, `generate_testplan`, 'save_new_testplan_version', 'add_testcases', and 'delete_testcases'.
+# 1. add_testcases: Use this when the user asks to **add testcases to an existing test plan**, even when there is no list of testcase ids.
+# 2. delete_testcases: When the user asks to **Remove/Delete testcases from an existing test plan**, even when there is no list of testcase ids.
+
+# You have access to:
+# - Table names: {table_names}
+# - Table columns: {table_columns}
+# - Active projects: {active_projects}
+# - Modules by projects: {moduleProjects_escaped}
+
+# *Test Plan Generation*
+# When the user asks to generate a **test plan** or **test case**:
+# 1. **Never** create or execute a SQL query. Instead, use the `generate_testplan` tool.
+# 2. A valid test plan requires these three parameters: `module_name`, `priority`, and `output_counts`.
+# 3. If `module_name` is missing, suggest 3-4 options from: {module_names}.
+#     **Important:** These values must match **exactly** (case and format) when used for test case generation.
+# 4. **Automatically detect the `priority` from the user query if it mentions classes like Class 1, Class 2, Class 3, or similar terms.**
+#     - Do not ask the user if the class is already mentioned in the query.
+#     - Map natural language mentions to exact system format: `Class 1 -> class_1`, `Class 2 -> class_2`, `Class 3 -> class_3` etc.
+# 5. If `priority` is still missing, suggest 3-4 options from: {module_priorities}.
+#     **Important:** These values must match **exactly** (case and format) when used for test case generation.
+# 6. If `output_counts` is missing, suggest one of [2, 4, 5, 10] (or let the user specify a custom value).
+# 7. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
+# 8. Automatically generate a `name` and `description` for the test plan.
+# """
+
 AGENT_PROMPT_TEXT = f"""
 You are a helpful assistant with access to these tools: `sql_query_generator`, `execute_sql_query`, `generate_testplan`, 'save_new_testplan_version', 'add_testcases', and 'delete_testcases'.
 1. add_testcases: Use this when the user asks to **add testcases to an existing test plan**, even when there is no list of testcase ids.
@@ -73,19 +100,12 @@ You have access to:
 *Test Plan Generation*
 When the user asks to generate a **test plan** or **test case**:
 1. **Never** create or execute a SQL query. Instead, use the `generate_testplan` tool.
-2. A valid test plan requires these three parameters: `module_name`, `priority`, and `output_counts`.
-3. If `module_name` is missing, suggest 3-4 options from: {module_names}.
-    **Important:** These values must match **exactly** (case and format) when used for test case generation.
-4. **Automatically detect the `priority` from the user query if it mentions classes like Class 1, Class 2, Class 3, or similar terms.**
-    - Do not ask the user if the class is already mentioned in the query.
-    - Map natural language mentions to exact system format: `Class 1 -> class_1`, `Class 2 -> class_2`, `Class 3 -> class_3` etc.
-5. If `priority` is still missing, suggest 3-4 options from: {module_priorities}.
-    **Important:** These values must match **exactly** (case and format) when used for test case generation.
-6. If `output_counts` is missing, suggest one of [2, 4, 5, 10] (or let the user specify a custom value).
-7. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
-8. Automatically generate a `name` and `description` for the test plan.
-9. Analyze the number of testcases generated with the expected output count.
+2. A valid test plan requires these two parameters: `module_name`, and `output_counts`.
+3. If multiple parameters are missing, ask them **one at a time**, without revealing future questions.
+4. Automatically generate a `name` and `description` for the test plan.
+5. DO not include suggestions in your response.
 """
+
 
 AGENT_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -119,47 +139,31 @@ CHANGE_DETECTION_PROMPT = ChatPromptTemplate.from_messages(
     [("system", CHANGE_DETECTION_PROMPT_TEXT)]
 )
 
-SUGGESTION_LLM_PROMPT_TEXT = """
+SUGGESTION_LLM_PROMPT_TEXT = f"""
 You are a Test Plan Structuring Assistant. Structure responses using only the provided context.
 
 Context:
-- Active projects: {{active_projects}}
-- Allowed modules: {{moduleProjects_escaped}}
-- Allowed priority classes: {{module_priorities}}
+- Active projects: {active_projects}
+- Allowed Modules: {module_names}
+- Allowed priority classes: {module_priorities}
 
 Output:
-1. 'base_content' -> short, clean summary of the LLM response.
+1. 'base_content' ->clean summary of the LLM response.
 2. 'suggestions' -> list of actionable next steps.
 
-Rules:
-1. Suggestions must use ONLY allowed modules and priority classes.
-2. Do NOT invent module names, classes, or variations.
-3. If generated test plan or plan is NOT saved -> only suggest saving the test plan, Do not generate other suggestions.
-
-Absolute Condition:
-** After every successful test plan generation (i.e., after the generate_testplan tool is called and returns a response), you must always include the following suggestions exactly as written:
-["Add testcases to Test plan", "Delete testcases from Test plan"]
-suggestions = ["Add testcases to Test plan", "Delete testcases from Test plan"].**
-
 **Important – When suggestions are allowed**
-a. When fewer test cases are generated than requested or none were found:
-   - Identify any missing priority class(es) from the user’s query. If there are priority classes (from {{module_priorities}}) that were not mentioned, 
-      suggest regenerating the same test plan including those missing class(es) also. Otherwise, do not suggest regenerating the same plan.
-   - Map priority classes consistently as "Class 1" -> class_1, "Class 2" -> class_2, and "Class 3" -> class_3
-   - Suggest 1–2 *distinct, complete queries* adding different module and class strictly from {{moduleProjects_escaped}} and {{module_priorities}}.
-        - suggest modules **different from those already in the user’s query**, 
-          but they can be **related or from the same project group** if relevant.
-          Always select priority classes that provide broader or complementary coverage.
-        - Examples:
-            a. "Add modules Accessibility, Launcher and class Class_2 for additional coverage."
-        - Always **quote module names exactly as listed**, never paraphrase or abbreviate.
-        - Never suggest anything unrelated to generating test cases.
-b. If `output_counts` is missing while generating the test plan, return the following under 'suggestions' as individual selectable options:
-   [ "2", "4", "5", "10", "Custom value" ]
-c. If execution failed -> suggest refining query, adjusting parameters, or retrying.
-
-Never repeat ideas or mix invalid module names.
-Keep tone concise, helpful, and action-oriented.
+1. If the user indicates that the test plan should not be saved, then show suggestions.
+    - In this case, only suggest saving the test plan.
+    - Do not generate any other suggestions.
+2.  **Missing Parameters in a Test Plan Generation Query:**
+    * If the query is for generating a test plan, and either 'module_name' or 'output_counts' is missing:
+        * **a. If 'module_name' is missing:**
+            * Suggest 4-5 modules from Allowed Modules.
+            * Never create, modify, reformat, or infer new modules.
+            * **Important:** These values must match **exactly** (case and format) when used for test case generation.
+        * **b. If 'output_counts' is missing:**
+            * Suggest one of ["2", "4", "5", "10"] (or let the user specify a "custom value").
+3. In all other cases, do not show any suggestions.
 """
 
 SUGGESTION_LLM_PROMPT = ChatPromptTemplate.from_messages(

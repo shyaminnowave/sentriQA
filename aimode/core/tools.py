@@ -157,8 +157,6 @@ def execute_sql_query(sql_query) -> list:
         logger.error(f"Error executing SQL query: {e}")
         return []
 
-
-# TEST PLAN GENERATOR
 class TestPlanGeneratorInput(BaseModel):
     name: Optional[str] = Field(None, description="Name of the test plan")
     description: Optional[str] = Field(None, description="Description of the test plan")
@@ -167,9 +165,6 @@ class TestPlanGeneratorInput(BaseModel):
     )
     module_names: Optional[List[str]] = Field(
         None, description="List of module names to include"
-    )
-    priority: Optional[List[str]] = Field(
-        None, description="Priority level for test cases"
     )
     user_prompt: Optional[str] = Field(
         None, description="Original user prompt for change detection"
@@ -185,7 +180,6 @@ def generate_testplan(
     description: str = None,
     output_counts: int = None,
     module_names: list[str] = None,
-    priority: List[str] = None,
     user_prompt: str = None,
     session_id: str = None,
 ):
@@ -193,26 +187,23 @@ def generate_testplan(
     Generates a structured test plan based on the given parameters and optionally saves it to the database.
     Steps:
     1. Accepts test plan details including name, description, number of test cases to generate,
-       relevant modules, priority, and optional user prompt.
+       relevant modules, and optional user prompt.
     2. Converts module names to module IDs for internal processing.
-    3. Validates required parameters (output_counts, module_names, and priority); logs a warning and returns None if missing.
+    3. Validates required parameters (output_counts, module_names); logs a warning and returns None if missing.
     4. Constructs a payload to generate test cases for the test plan.
     5. If test cases are returned, optionally saves the test plan version.
     6. Returns the generated test cases data.
     """
     session_id = get_current_session_id()
     user_prompt = get_current_user_prompt()
-    if not (module_names and priority):
+    if not (module_names):
         logger.warning("Missing required parameters for test plan generation")
         return None
 
-    logger.info(
-        f"Calling intelligent_testcase_selector for modules={module_names}, priority={priority}"
-    )
+    logger.info(f"Calling intelligent_testcase_selector for modules={module_names}")
     tcs_data = intelligent_testcase_selector(
         user_query=user_prompt or "",
         module_names=module_names,
-        priority=priority,
         output_counts=output_counts or 10,
         session_id=session_id,
     )
@@ -270,7 +261,6 @@ def generate_testplan(
                 ] = "This test plan is not saved. The test plan is temporarily visible, and if you change the version, the generated test cases will not be shown."
     except Exception as e:
         logger.error(f"Error handling test plan version: {e}")
-    # set_last_generated_testplan(session_id, tcs_data)
     finally:
         set_last_generated_testplan(session_id, tcs_data)
         logger.success("last generated plan is set")
@@ -337,7 +327,7 @@ def add_testcases(testcase_ids: List[str] = None):
 )
 def delete_testcases(testcase_ids: List[str] = None):
     """
-    Delete testcases to the test plan:
+    Delete testcases from the test plan:
     - If no IDs are provided, return True to inform user about what to do.
     - If IDs are provided, pass them to modify_testplan.
     """

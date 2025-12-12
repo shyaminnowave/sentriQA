@@ -17,14 +17,9 @@ from aimode.core.llms import llm
 def intelligent_testcase_selector(
     user_query: str,
     module_names: List[str],
-    priority: List[str],
     output_counts: int,
     session_id: str,
 ):
-    logger.info(
-        f"intelligent_testcase_selector | session={session_id}, modules={module_names}, priority={priority}"
-    )
-
     # Step 1:module IDs
     module_ids = list(
         Module.objects.filter(name__in=module_names).values_list("id", flat=True)
@@ -41,14 +36,6 @@ def intelligent_testcase_selector(
             "message": "Invalid or empty module names.",
         }
 
-    # Step 2: Run scoring algorithm
-    # payload = {
-    #     "name": f"Intelligent Plan: {', '.join(module_names)[:180]}",
-    #     "description": f"LLM-assisted selection for: {user_query}",
-    #     "output_counts": output_counts,
-    #     "module": module_ids,
-    #     "priority": priority,
-    # }
     max_display = 5
     display_modules = module_names[:max_display]
 
@@ -63,7 +50,6 @@ def intelligent_testcase_selector(
         "description": f"LLM-assisted selection for: {user_query}",
         "output_counts": output_counts,
         "module": module_ids,
-        "priority": priority,
     }
 
     try:
@@ -87,29 +73,29 @@ def intelligent_testcase_selector(
     # Step 3: LLM selection (choose most relevant testcases)
     try:
         system_prompt = """
-        You are an Expert QA Test Plan Manager working with a Risk-Based Test Planning (RBTP) system.
-        Your task is to intelligently select the most relevant and high-risk test cases for the given modules/features.
-
-        Selection criteria:
-        - Focus on test cases that cover **high-risk or business-critical functionalities**.
-        - Prioritize scenarios with **high failure**, strong **module dependencies**, or **system-wide impact**.
-        - Prefer test cases that validate **critical paths, edge conditions, or potential failure points**.
-        - Consider risk-related signals such as failure rate, defect density, and module sensitivity.
-
-        Respond ONLY with a valid JSON list of selected test cases (no explanation or text).
+        You are an expert QA Test Planner working in a risk-based testing system.
+        Use your knowledge of risk-based testing to evaluate and identify the highest-risk testcases for modules.
+        You do NOT rely only on testscore.
+        Respond only with valid JSON.
         """
-
         user_prompt = f"""
         USER QUERY: {user_query}
-        PRIORITY: {priority}
         MODULES: {module_names}
+        REQUESTED NUMBER OF TESTCASES: {output_counts}
 
-        Below is the list of all candidate test cases:
+        Below are the candidate test cases in JSON format:
         {json.dumps(testcases, indent=2)}
 
-        Select **exactly {output_counts}** test cases that best fit the risk-based criteria.
-        If fewer than {output_counts} fit, return only those few.
-        Output ONLY valid JSON (list of selected testcases).
+        SELECTION RULES:
+        - Analyze risk based on ALL attributes, not only testscore.
+        - Use domain knowledge and risk-based testing principles.
+        - Do NOT create or imagine new testcases.
+        - Only choose from the list provided above.
+        - Only include testcases belonging to the requested modules.
+        - Output must be a pure JSON array of ONLY the selected testcase objects.
+
+        No extra text, explanations, comments, or metadata.
+        Output MUST be a valid JSON array.
         """
 
         llm_response = llm.invoke(
@@ -136,21 +122,13 @@ def intelligent_testcase_selector(
         }
     warning = ""
     warning_prompt = f"""
-    You are a Senior QA Analyst.
+    You are a Senior QA Analyst who is working with a Risk-Based Testing system.
 
-    Evaluate whether the number of test cases requested by the user ({output_counts}) 
-    and the selected testcases {selected_cases}
-    are sufficient to cover the risks of the selected modules.
-
-    You must generate a warning if:
-    - the user-requested test count is too low for meaningful risk coverage, OR
-    - the selected testcases miss important risk areas or seem insufficient.
+    Evaluate whether the selected testcases {selected_cases} are sufficient for risk based testing of the selected modules {module_names}.
+    if not then explain what is missing to test the selected modules and how it can be improved.
 
     The warning must:
-    - Be a single short sentence suitable as a heading
     - Not mention module names or numbers
-    - Convey that the test count or coverage is insufficient
-    - Suggest increasing the test count
 
     If coverage appears adequate, return an empty string.
     Output ONLY the warning or an empty string.
@@ -194,7 +172,6 @@ def intelligent_testcase_selector(
 
         reasoning_user_prompt = f"""
         MODULES: {module_names}
-        PRIORITY: {priority}
 
         Selected Test Cases:
         {json.dumps(selected_cases, indent=2)}
@@ -229,7 +206,6 @@ def intelligent_testcase_selector(
         "description": payload["description"],
         "modules": module_display_names,
         "output_counts": output_counts,
-        "priority": priority,
         "project": "default_project",
         "generate_test_count": len(selected_cases),
         "testcase_type": "functional",

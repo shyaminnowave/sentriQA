@@ -32,13 +32,16 @@ def get_llm_response(
             ],
             "ask_to_save": True,
         }
+    logger.success(modify_extra_suggestions)
+    # if modify_extra_suggestions:
+    #     return
 
     if modify_extra_suggestions:
         return {
-            "content": "How may I assist you? Would you like to add or delete test cases in the test plan?",
+            "content": "Hey! You have chosen to modify the test plan, What would you like to do next — add some new test cases or remove a few from your test plan?",
             "suggestions": [
-                "Add testcases to Test plan",
-                "Delete testcases from Test plan",
+                "Add new test cases",
+                "Delete testcases",
             ],
         }
 
@@ -122,6 +125,48 @@ def get_llm_response(
                 content_dict["content"] = "Test plan generated successfully."
 
             break
+
+        if isinstance(msg, ToolMessage) and msg.name == "filter_testcases_tool":
+            logger.debug(f"Handling filter_testcases_tool message: {msg.content}")
+
+            raw_content = (
+                msg.content.strip() if isinstance(msg.content, str) else msg.content
+            )
+
+            try:
+                # Parse tool output (string → json or direct dict)
+                tcs_data = (
+                    json.loads(raw_content)
+                    if isinstance(raw_content, str)
+                    else raw_content
+                )
+                content_dict["tcs_data"] = tcs_data
+
+                # Check for testcases inside the expected structure
+                testcases = (
+                    tcs_data.get("data", {}).get("testcases")
+                    if isinstance(tcs_data, dict)
+                    else None
+                )
+
+                if testcases:
+                    content_dict["content"] = (
+                        "Testcases have been filtered as per your requirements."
+                    )
+                else:
+                    content_dict["content"] = (
+                        "No testcases found for the given filters."
+                    )
+
+            except Exception as e:
+                logger.error(f"Failed to parse filter_testcases_tool output: {e}")
+                content_dict["content"] = (
+                    "An error occurred while filtering the testcases."
+                )
+                content_dict["tcs_data"] = {}
+
+            break
+
         if isinstance(msg, ToolMessage) and msg.name == "save_new_testplan_version":
 
             raw_save_output = msg.content.strip()
@@ -214,8 +259,8 @@ def get_llm_response(
     tcs_data = content_dict.get("tcs_data") or {}
     data = tcs_data.get("data") if isinstance(tcs_data, dict) else {}
     if data:
-        if "testcase_data" in data and "testcases" not in data:
-            data["testcases"] = data.get("testcase_data", None)
+        if data and "testcase_data" in data and "testcases" not in data:
+            data["testcases"] = data["testcase_data"]
         if not isinstance(data, dict) or not data.get("testcases"):
             content_dict.pop("tcs_data", None)
     return content_dict

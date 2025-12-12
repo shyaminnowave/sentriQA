@@ -18,6 +18,7 @@ from aimode.core.tools import (
     add_testcases,
     delete_testcases,
 )
+from aimode.core.testplan_filter import filter_testcases_tool
 from aimode.core.prompts import AGENT_PROMPT, SUGGESTION_LLM_PROMPT
 from aimode.core.llms import llm
 
@@ -42,6 +43,7 @@ tools = [
     save_new_testplan_version,
     add_testcases,
     delete_testcases,
+    filter_testcases_tool,
 ]
 llm_with_tools = AGENT_PROMPT | llm.bind_tools(tools)
 

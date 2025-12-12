@@ -26,7 +26,6 @@ def get_llm():
             openai_api_key=OPENAI_API_KEY,
             temperature=0.2,
         )
-        logger.success("LLM Initialized")
     return _llm
 
 

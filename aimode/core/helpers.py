@@ -55,7 +55,6 @@ def get_sql_table_names(conn):
         FROM pg_catalog.pg_tables
         WHERE schemaname='core';
     """
-    logger.info(f"Connection type: {type(conn)}")
     try:
         with conn.cursor() as cur:
             cur.execute(query)

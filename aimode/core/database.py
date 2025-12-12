@@ -50,7 +50,6 @@ class SQLDatabaseConnection:
                 connect_timeout=10,
             )
             self._pg_conn.autocommit = True
-            logger.success("PostgreSQL connection established.")
             return self._pg_conn
         except OperationalError as e:
             logger.error(f"Failed to connect to PostgreSQL: {e}")
