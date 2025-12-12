@@ -97,7 +97,7 @@ class TestCaseList(c.CustomListCreateAPIView):
         return queryset
 
     pagination_class = CustomPagination
-    # filterset_class = TestcaseFilter
+    filterset_class = TestcaseFilter
     serializer_class = TestcaseListSerializer
 
 
